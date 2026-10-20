@@ -39,6 +39,8 @@ printf '// GENERATED FROM specs/30-experience/tokens.json\nlet x = 1\n' > gen.sw
 echo "{\"tool_input\":{\"file_path\":\"$T/gen.swift\"}}" | hook pre_edit_guard; echo
 echo '{"tool_input":{"command":"rm -rf ~"}}' | hook pre_bash_guard; echo
 echo '{"tool_input":{"command":"git push --force origin main"}}' | hook pre_bash_guard; echo
+echo '{"tool_input":{"command":"vercel --prod"}}' | hook pre_bash_guard; echo "(deploy before phase 7 → deny)"
+echo '{"tool_input":{"command":"npm run dev"}}' | hook pre_bash_guard; echo "(local dev → nothing)"
 echo '{"tool_input":{"command":"npm install left-pad@1.3.0 --save"}}' | hook pre_bash_guard; echo
 mkdir -p specs/40-technical; echo "| **DEP-01** | left-pad | MIT |" > specs/40-technical/dependencies.md
 echo '{"tool_input":{"command":"npm install left-pad"}}' | hook pre_bash_guard; echo "(registered → nothing above)"

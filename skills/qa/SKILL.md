@@ -5,8 +5,10 @@ description: Phase 5 of build-my-app — end-to-end flow tests, visual regressio
 
 # Phase 5 — QA & hardening
 
-Follow **core**. Run audits in parallel where independent (agents: `qa-runner`,
-`a11y-auditor`, `security-auditor`, `perf-analyst`, `license-auditor`).
+Follow **core**. All QA runs on the local environment (local services, seeded data); the
+production-like check of a release build happens in phase 6. Run audits in parallel where
+independent (agents: `qa-runner`, `a11y-auditor`, `security-auditor`, `perf-analyst`,
+`license-auditor`).
 
 1. **Flows**: one end-to-end UI test per `FLOW-` spec; run on the stack's simulator/emulator
    or browser.

@@ -19,6 +19,12 @@ This project is built with the **build-my-app** workflow. Progress lives in
 - `specs/` is tool-agnostic; platform and technology decisions live only in `specs/40-technical/`.
 - `adapters/` describes how specific tools consume the specs.
 
+## Environments
+Develop and test on the **local** environment only (`docs/local-dev.md`): local services,
+seed data, fakes for paid/third-party services. Never deploy, upload, publish, or create
+cloud resources during development. Shipping happens only in the release (local candidate)
+and deploy (staging → production, user-approved) phases; see `docs/deploy/`.
+
 ## Licensing
 Follow the dependency and asset policy in `specs/40-technical/dependencies.md` and its ADR.
 Register every dependency and asset before use.

@@ -1,9 +1,9 @@
 ---
 name: iterate
-description: Phase 7 of build-my-app and the change-request procedure — turn feedback, bugs, and new ideas into spec changes, analyze impact, review, and rebuild only what is affected; start the next milestone. Use for /build-my-app:change and after release.
+description: Phase 8 of build-my-app and the change-request procedure — turn feedback, bugs, and new ideas into spec changes, analyze impact, review, and rebuild only what is affected; start the next milestone. Use for /build-my-app:change and after deploy.
 ---
 
-# Phase 7 — Iterate & change requests
+# Phase 8 — Iterate & change requests
 
 Follow **core**.
 
@@ -14,13 +14,16 @@ Follow **core**.
    specs, designs (by SCR/CMP), modules, tests.
 4. **Review**: review-loop protocol on the changed and affected specs.
 5. **Approve** per autonomy (product decisions always go to the user in guided/balanced).
-6. **Rebuild only the affected parts**: design loop for affected frames; feature pipeline for
-   affected features; regression suite.
-7. **Record**: changelog entry; statuses; release notes when shipped.
+6. **Rebuild only the affected parts, locally**: design loop for affected frames; feature
+   pipeline for affected features; regression suite on the local environment.
+7. **Ship**: when the user wants the change live, cut a new candidate (release skill) and
+   deploy it (deploy skill). Urgent fixes take the same path, with a smaller scope.
+8. **Record**: changelog entry; statuses; release notes when shipped.
 
 ## Next milestone
 Promote the next milestone's candidates in `specs/60-delivery/roadmap.md` into features
-(phase 1.2 → 1.3), then run design, build, QA, release again for that scope.
+(phase 1.2 → 1.3), then run design, build, QA (local), release, and deploy again for that
+scope.
 
 ## Feedback intake
 Collect user feedback, crash reports, analytics, and store reviews into

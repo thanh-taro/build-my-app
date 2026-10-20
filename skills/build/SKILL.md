@@ -20,7 +20,8 @@ Follow **core**. Load the stack pack skill and the **spec-context** skill.
 3. **Implement** respecting ADRs and module boundaries; cite IDs (`// Implements: F-xxx.R#`);
    strings via COPY IDs only; design values via tokens only; new dependencies must be
    `approved` in the registry.
-4. **Verify**: build; all tests; `spec_lint.py`; **run the app** and capture screenshots of the
+4. **Verify locally**: build; all tests; `spec_lint.py`; **run the app on the local
+   environment** (local services and seed data, never a shared or production one) and capture screenshots of the
    feature's screens/states; compare with the designs.
 5. **Review** (review-loop protocol, loop `build-F-xxx`):
    `code-reviewer` (bugs, simplicity) + spec audit (every R implemented, every AC tested:
@@ -30,6 +31,8 @@ Follow **core**. Load the stack pack skill and the **spec-context** skill.
    `shipped` when merged (update `_index.md`; changelog if behavior changed).
 
 ## Guards
+- **Local only**: no deploys, uploads, or cloud resources in this phase. A feature that needs
+  an external service uses its local fake or sandbox; real credentials wait for phase 7.
 - **Spec drift**: implementation reveals a gap → stop that feature, propose a spec change
   (spec-author), review it, then continue.
 - **Stuck**: escalation protocol after 2–3 genuine attempts; consider a spike.

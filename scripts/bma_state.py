@@ -39,10 +39,14 @@ PHASES = [
     ("architecture", "3 Architecture & spikes"),
     ("build", "4 Implementation"),
     ("qa", "5 QA & hardening"),
-    ("release", "6 Release"),
-    ("iterate", "7 Iterate"),
+    ("release", "6 Release candidate"),
+    ("deploy", "7 Deploy"),
+    ("iterate", "8 Iterate"),
 ]
 PHASE_IDS = [p for p, _ in PHASES]
+# Phases 0-5 run on the local machine only; "release" packages a candidate locally and
+# "deploy" is the first phase allowed to ship anything off the machine.
+LOCAL_PHASES = ("setup", "product-spec", "design", "architecture", "build", "qa", "release")
 # Phases that may start once their prerequisites' gates have passed.
 REQUIRES = {
     "setup": [],
@@ -52,7 +56,8 @@ REQUIRES = {
     "build": ["design", "architecture"],
     "qa": ["build"],
     "release": ["qa"],
-    "iterate": ["release"],
+    "deploy": ["release"],
+    "iterate": ["deploy"],
 }
 PHASE_SKILL = {pid: pid for pid in PHASE_IDS}  # skill names in the build-my-app plugin
 AUTONOMY = ("guided", "balanced", "autopilot")
@@ -77,7 +82,26 @@ def load(required: bool = True) -> dict | None:
         if required:
             sys.exit("No build-my-app state here. Run `/build-my-app:start` to start (or `bma_state.py init`).")
         return None
-    return json.loads(p.read_text())
+    return migrate(json.loads(p.read_text()))
+
+
+def migrate(state: dict) -> dict:
+    """Add phases introduced after the state was created (e.g. 'deploy' in v2)."""
+    for pid, title in PHASES:
+        ph = state["phases"].get(pid)
+        if ph is None:
+            ph = {"title": title, "status": "pending", "step": None,
+                  "gate": {"status": "pending", "at": None, "note": None}}
+            # v1 'release' meant "user submitted/published": treat deploy as already done.
+            if pid == "deploy" and state["phases"].get("release", {}).get("gate", {}).get("status") == "passed":
+                ph["status"] = "done"
+                ph["gate"] = {"status": "passed", "at": now(), "note": "migrated: v1 release covered deployment"}
+            state["phases"][pid] = ph
+        else:
+            ph["title"] = title
+    state["phases"] = {pid: state["phases"][pid] for pid in PHASE_IDS}
+    state["version"] = 2
+    return state
 
 
 def save(state: dict) -> None:
@@ -118,7 +142,7 @@ def cmd_init(a) -> None:
     if load(required=False):
         sys.exit("State already exists. Use `status`.")
     state = {
-        "version": 1,
+        "version": 2,
         "created": now(),
         "autonomy": a.autonomy,
         "profile": {},

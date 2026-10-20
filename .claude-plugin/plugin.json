@@ -1,7 +1,7 @@
 {
   "name": "build-my-app",
-  "version": "0.1.0",
-  "description": "Builds an app from idea to release with spec-as-source: brainstorm, spec, design, architecture & spikes, test-first implementation, QA, and release — with review loops, audits, and human gates.",
+  "version": "0.2.0",
+  "description": "Builds an app from idea to release with spec-as-source: brainstorm, spec, design, architecture & spikes, local test-first implementation and QA, release candidate, and deploy — with review loops, audits, and human gates.",
   "author": {
     "name": "thanhnt1"
   },

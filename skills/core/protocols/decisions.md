@@ -7,7 +7,7 @@
 | design | style direction, design approval | user (guided/balanced) |
 | money | paid services, subscriptions, assets, developer accounts | **always user** |
 | legal | licenses, terms, privacy, data leaving the device | **always user** |
-| release | publishing, submitting, inviting testers | **always user** |
+| release | approving a release candidate, deploying, publishing, submitting, inviting testers | **always user** |
 | technical | libraries within policy, structure, naming, test details | Claude decides and records an ADR or changelog line |
 
 ## How to ask

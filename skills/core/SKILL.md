@@ -21,9 +21,14 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bma_state.py <command>
 4. **Ask or decide per the decision policy** in `${CLAUDE_SKILL_DIR}/protocols/decisions.md`.
 5. **Loops converge.** Review→fix cycles follow `${CLAUDE_SKILL_DIR}/protocols/review-loop.md`.
 6. **Escalate when stuck.** Follow `${CLAUDE_SKILL_DIR}/protocols/escalation.md`.
-7. **Hard stops — always the user's call, at every autonomy level:** spending money, creating
+7. **Local first, then release, then deploy.** Phases 0–5 develop and verify on the local
+   machine only: local services, local data, fakes for paid/third-party services. Phase 6
+   (release) packages and verifies a versioned candidate locally. Only phase 7 (deploy)
+   ships anything off the machine. Never provision, upload, publish, or deploy earlier — the
+   bash guard blocks it.
+8. **Hard stops — always the user's call, at every autonomy level:** spending money, creating
    accounts, entering credentials or secrets, legal/licensing choices, sending data off-device,
-   publishing or submitting anything, deleting user data, force-pushing.
+   publishing, deploying, or submitting anything, deleting user data, force-pushing.
 
 ## Autonomy levels (`bma_state.py get autonomy`)
 | Level | Ask the user for |

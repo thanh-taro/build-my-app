@@ -1,5 +1,5 @@
 ---
-description: Start or resume building an app with the build-my-app workflow (idea → spec → design → architecture → build → QA → release).
+description: Start or resume building an app with the build-my-app workflow (idea → spec → design → architecture → local build → QA → release candidate → deploy).
 argument-hint: "[optional: a short idea, or 'resume']"
 allowed-tools: Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bma_state.py *), Bash(python3 tools/spec_lint.py *), Bash(python3 tools/spec_query.py *)
 ---
@@ -25,4 +25,6 @@ User input: `$ARGUMENTS`
    user, then stop and tell them exactly what is needed and how to resume
    (`/build-my-app:start`).
 
-Phase skills: setup · product-spec · design · architecture · build · qa · release · iterate.
+Phase skills: setup · product-spec · design · architecture · build · qa · release · deploy ·
+iterate. Phases 0–5 stay on the local machine; release (6) packages a candidate locally;
+only deploy (7) ships it.

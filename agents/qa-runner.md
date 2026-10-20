@@ -1,6 +1,6 @@
 ---
 name: qa-runner
-description: Runs end-to-end flow tests and visual regression, reproduces bugs, and maintains the traceability matrix (AC → test → result). Use in build-my-app phase 5 and for /build-my-app:audit qa.
+description: Runs end-to-end flow tests and visual regression, reproduces bugs, and maintains the traceability matrix (AC → test → result). Use in build-my-app phase 5 (local), phase 6 (release build), phase 7 (staging/production smoke checks), and for /build-my-app:audit qa.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 color: green
