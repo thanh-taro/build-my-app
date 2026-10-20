@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/session_start.py\"" } ] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/prompt_spec_ids.py\"" } ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "Edit|Write|MultiEdit",
+        "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_edit_guard.py\"" } ] },
+      { "matcher": "Bash",
+        "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_bash_guard.py\"" } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Edit|Write|MultiEdit",
+        "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/post_edit_lint.py\"" } ] }
+    ],
+    "PreCompact": [
+      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_compact.py\"" } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/stop_check.py\"" } ] }
+    ]
+  }
+}

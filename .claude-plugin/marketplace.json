@@ -1,0 +1,14 @@
+{
+  "name": "taro-tools",
+  "description": "Taro tools — Claude Code plugins by thanhnt1.",
+  "owner": {
+    "name": "thanhnt1"
+  },
+  "plugins": [
+    {
+      "name": "build-my-app",
+      "source": "./",
+      "description": "Idea-to-release app building workflow with spec-as-source, review loops, audits, and human gates."
+    }
+  ]
+}
