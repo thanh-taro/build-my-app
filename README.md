@@ -172,7 +172,7 @@ Phases 2 and 3 run in parallel after gate 1. Shared rules live in the `core` ski
 
 ## Status
 
-v0.2.0 — skeleton. Phases 0–1 and the core protocols are fully specified; phases 2–8 have
+v0.2.1 — skeleton. Builds and tests now stay within a machine resource budget. Phases 0–1 and the core protocols are fully specified; phases 2–8 have
 complete step lists but are untested end to end. See `ROADMAP.md`.
 
 ## License
