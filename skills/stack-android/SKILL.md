@@ -6,7 +6,17 @@ description: Stack pack for native Android apps in build-my-app — Kotlin/Compo
 # Stack pack — Android (Kotlin / Compose)
 
 - **Layout**: app module + feature/core modules per spec.
-- **Build/test**: `./gradlew assembleDebug test connectedAndroidTest`.
+- **Build/test**: `./gradlew assembleDebug test connectedAndroidTest`. While iterating:
+  `./gradlew :<module>:testDebugUnitTest --tests '<pattern>'`. Run `connectedAndroidTest` only
+  at verification.
+- **Resource limits** (`gradle.properties`, set in phase 3): `org.gradle.jvmargs=-Xmx2g
+  -XX:MaxMetaspaceSize=512m`, `kotlin.daemon.jvmargs=-Xmx1536m`,
+  `org.gradle.workers.max=2`, `org.gradle.parallel=false` (when ≤16 GB),
+  `org.gradle.daemon.idletimeout=600000`. In `build.gradle.kts`, set
+  `tasks.withType<Test> { maxParallelForks = (System.getenv("BMA_TEST_WORKERS") ?: "2").toInt(); maxHeapSize = "1g" }`.
+  Every worktree starts its own Gradle and Kotlin daemons, so the idle timeout matters.
+  Run `./gradlew --stop` only when no other build is active. Use one emulator
+  (`-memory 2048 -no-snapshot-save`) shared by all worktrees.
 - **Run & screenshot**: `emulator`, `adb install`, `adb shell screencap`; Compose UI tests for
   state screenshots.
 - **Codegen**: schema → data classes; tokens → theme; `copy.md` → `strings.xml`.

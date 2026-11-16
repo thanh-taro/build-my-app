@@ -47,7 +47,20 @@ echo '{"tool_input":{"command":"npm install left-pad"}}' | hook pre_bash_guard; 
 echo '{"stop_hook_active":false}' | hook stop_check; echo
 echo '{"trigger":"auto"}' | hook pre_compact; S get log | tail -4
 
-echo "== 5. spec lint hook + spec-id hook"
+echo "== 5. resource budget + heavy-run wrapper"
+S resources; S resources --workers 1 --slots 1
+python3 "$P/scripts/bma_heavy.py" --label selftest -- 'echo "workers=$BMA_TEST_WORKERS"'
+python3 "$P/scripts/bma_heavy.py" -- sleep 2 & sleep 0.5
+python3 "$P/scripts/bma_heavy.py" -- echo "(ran after the first run released its slot)"; wait
+python3 "$P/scripts/bma_heavy.py" -- false; echo "exit code passed through=$? (expect 1)"
+echo '{"tool_input":{"command":"cd app && npm test"}}' | hook pre_bash_guard; echo "(unwrapped test run → deny)"
+echo '{"tool_input":{"command":"npx jest --watch"}}' | hook pre_bash_guard; echo "(watch mode → deny)"
+echo "{\"tool_input\":{\"command\":\"python3 $P/scripts/bma_heavy.py -- 'npm test'\"}}" | hook pre_bash_guard; echo "(wrapped → nothing)"
+S set enforce_heavy false >/dev/null
+echo '{"tool_input":{"command":"npm test"}}' | hook pre_bash_guard; echo "(enforcement off → nothing)"
+S set enforce_heavy true >/dev/null
+
+echo "== 6. spec lint hook + spec-id hook"
 mkdir -p specs/20-features
 printf -- '---\nid: F-001\ntitle: Bad\nstatus: draft\nmilestone: M-1\npriority: P0\n---\n- **R1** uses RULE-99\n- **AC1** Given x, when y, then z. (R1)\n' > specs/20-features/F-001-bad.md
 echo "{\"tool_input\":{\"file_path\":\"$T/specs/20-features/F-001-bad.md\"}}" | hook post_edit_lint; echo "post_edit_lint exit=$?"

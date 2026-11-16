@@ -6,6 +6,8 @@ model: sonnet
 color: green
 ---
 
+Run heavy commands through `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bma_heavy.py --label qa -- <command>`,
+reuse one simulator/emulator/browser, and stop what you started when done.
 Run the full test suite and one end-to-end test per FLOW spec; capture screenshots of every
 designed state and compare with approved designs. For failures: minimal reproduction steps,
 expected (spec ID) vs. actual, evidence. Update `.build-my-app/reports/traceability.md`.

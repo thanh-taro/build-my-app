@@ -6,9 +6,10 @@ description: Phase 5 of build-my-app — end-to-end flow tests, visual regressio
 # Phase 5 — QA & hardening
 
 Follow **core**. All QA runs on the local environment (local services, seeded data); the
-production-like check of a release build happens in phase 6. Run audits in parallel where
-independent (agents: `qa-runner`, `a11y-auditor`, `security-auditor`, `perf-analyst`,
-`license-auditor`).
+production-like check of a release build happens in phase 6. Static audits
+(`security-auditor`, `license-auditor`, and `a11y-auditor` on existing screenshots) may run in
+parallel. Agents that run the app (`qa-runner`, `perf-analyst`) run **one after the other**,
+within the resource budget (core resource protocol).
 
 1. **Flows**: one end-to-end UI test per `FLOW-` spec; run on the stack's simulator/emulator
    or browser.
@@ -20,7 +21,8 @@ independent (agents: `qa-runner`, `a11y-auditor`, `security-auditor`, `perf-anal
 5. **Security & privacy**: data storage, network, permissions, secrets in code, third-party
    SDK data collection; draft store privacy declarations.
 6. **Licenses**: every dependency/asset `approved`; nothing `personal-only` in release builds.
-7. **Bug triage loop**: reproduce → failing test → fix → full suite; spec gaps go through the
+7. **Bug triage loop**: reproduce → failing test → fix → affected tests, then the full suite
+   once per batch of fixes; spec gaps go through the
    spec-author skill.
 8. **Traceability matrix**: `.build-my-app/reports/traceability.md` — every AC → test(s) →
    last result; every NFR → measurement → result.

@@ -8,6 +8,13 @@ description: Stack pack for native iOS apps in build-my-app — Swift/SwiftUI pr
 - **Layout**: app target + local Swift packages per module (from `specs/40-technical/modules/`).
 - **Build/test**: `xcodebuild -scheme <App> -destination 'platform=iOS Simulator,name=<device>' build test`;
   Swift Testing / XCTest; test names per `adapters/tests.md`.
+- **Resource limits** (always add these flags): `-parallel-testing-worker-count ${BMA_TEST_WORKERS:-2}
+  -maximum-concurrent-test-simulator-destinations 1 -jobs ${BMA_TEST_WORKERS:-2}`. Parallel
+  testing clones the simulator once per worker, so a high count multiplies memory. While
+  iterating, use `-only-testing:<Target>/<Suite>` and `test-without-building` after one
+  `build-for-testing`. Use one named simulator for every worktree, and do not boot more.
+  `xcrun simctl shutdown all` when the run ends. Give each worktree its own
+  `-derivedDataPath .build/DerivedData` so `rm -rf` cleans it up with the worktree.
 - **Run & screenshot**: `xcrun simctl boot`, `xcrun simctl install`, `xcrun simctl launch`,
   `xcrun simctl io booted screenshot <file>`; UI tests for repeatable state screenshots.
 - **Codegen**: schema → Codable types; tokens → `DesignTokens.swift`; `copy.md` →

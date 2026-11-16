@@ -7,6 +7,13 @@ description: Stack pack for web apps in build-my-app — project layout, build/t
 
 - **Layout**: framework chosen in phase 3 (ADR); modules as packages/folders per spec.
 - **Build/test**: package scripts for build, unit tests, end-to-end tests (one per FLOW).
+  Scripts never start watch mode (`vitest run`, not `vitest`).
+- **Resource limits** (set in phase 3): Vitest
+  `maxWorkers: Number(process.env.BMA_TEST_WORKERS ?? 2)`, with `pool: 'forks'` for
+  DOM-heavy suites. Jest `--maxWorkers=${BMA_TEST_WORKERS:-2}` and `--workerIdleMemoryLimit=512MB`.
+  Playwright `workers: Number(process.env.BMA_TEST_WORKERS ?? 1)`, one browser project
+  while iterating, and `reuseExistingServer: true` so worktrees share one dev server. While
+  iterating, run only matching tests (`vitest run <path>`, `playwright test -g <F-ID>`).
 - **Run & screenshot**: dev server + browser automation (browser tools/MCP when available) for
   state screenshots and visual regression.
 - **Codegen**: schema → types; tokens → CSS variables/theme; `copy.md` → message catalog.

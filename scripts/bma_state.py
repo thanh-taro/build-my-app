@@ -21,6 +21,8 @@ Usage (from the project root):
   bma_state.py set <key> <json-value>    Top-level settings: autonomy, profile, stack, design_tool, ...
   bma_state.py get <key>
   bma_state.py log "<event>"
+  bma_state.py resources [--detect] [--slots N] [--builders N] [--workers N]
+                                         Machine budget for heavy work (builds, tests, simulators)
 """
 
 from __future__ import annotations
@@ -31,6 +33,9 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from bma_resources import budget, memory_state  # noqa: E402
 
 PHASES = [
     ("setup", "0 Setup & discovery"),
@@ -100,6 +105,7 @@ def migrate(state: dict) -> dict:
         else:
             ph["title"] = title
     state["phases"] = {pid: state["phases"][pid] for pid in PHASE_IDS}
+    state.setdefault("resources", budget())
     state["version"] = 2
     return state
 
@@ -154,6 +160,7 @@ def cmd_init(a) -> None:
         "decisions": [],
         "loops": {},
         "log": [],
+        "resources": budget(),
     }
     log(state, f"initialized (autonomy={a.autonomy})")
     save(state)
@@ -184,6 +191,11 @@ def summary_lines(state: dict, short: bool = False) -> list[str]:
         mark = {"pending": " ", "in_progress": ">", "gate": "?", "done": "x"}[ph["status"]]
         gate = "gate passed" if ph["gate"]["status"] == "passed" else ""
         lines.append(f"  [{mark}] {ph['title']:<26} {ph['status']:<12} {gate}")
+    res = state.get("resources")
+    if res:
+        lines.append("")
+        lines.append(f"Resources: {res['heavy_slots']} heavy run(s) at once · {res['parallel_builders']} builder(s) "
+                     f"per wave · {res['test_workers']} test worker(s) · memory pressure {memory_state()}")
     active_loops = {k: v for k, v in state["loops"].items() if v.get("active")}
     if active_loops:
         lines.append("")
@@ -346,6 +358,26 @@ def cmd_get(a) -> None:
     print(json.dumps(state.get(a.key), indent=2, ensure_ascii=False))
 
 
+def cmd_resources(a) -> None:
+    state = load()
+    res = budget() if a.detect else dict(state.get("resources") or budget())
+    for key, val in (("heavy_slots", a.slots), ("parallel_builders", a.builders), ("test_workers", a.workers)):
+        if val is not None:
+            res[key] = max(1, val)
+    res["parallel_builders"] = min(res["parallel_builders"], res["heavy_slots"] + 1)
+    if res != state.get("resources"):
+        state["resources"] = res
+        log(state, f"resources: {res['heavy_slots']} heavy slot(s), {res['parallel_builders']} builder(s), "
+                   f"{res['test_workers']} test worker(s)")
+        save(state)
+    if a.json:
+        print(json.dumps(res))
+        return
+    print(f"Machine: {res['memory_gb']} GB RAM, {res['cpus']} performance cores · memory pressure now: {memory_state()}")
+    print(f"Budget:  {res['heavy_slots']} heavy run(s) at once · {res['parallel_builders']} feature-builder(s) "
+          f"per wave · {res['test_workers']} test worker(s) per run")
+
+
 def cmd_log(a) -> None:
     state = load()
     log(state, a.text)
@@ -373,10 +405,13 @@ def main() -> None:
     s = sub.add_parser("set"); s.add_argument("key"); s.add_argument("value")
     s = sub.add_parser("get"); s.add_argument("key")
     s = sub.add_parser("log"); s.add_argument("text")
+    s = sub.add_parser("resources"); s.add_argument("--detect", action="store_true")
+    s.add_argument("--slots", type=int); s.add_argument("--builders", type=int); s.add_argument("--workers", type=int)
+    s.add_argument("--json", action="store_true")
     a = ap.parse_args()
     {"init": cmd_init, "status": cmd_status, "next": cmd_next, "phase": cmd_phase, "step": cmd_step,
      "gate": cmd_gate, "decide": cmd_decide, "loop": cmd_loop, "set": cmd_set, "get": cmd_get,
-     "log": cmd_log}[a.cmd](a)
+     "log": cmd_log, "resources": cmd_resources}[a.cmd](a)
 
 
 if __name__ == "__main__":

@@ -129,6 +129,16 @@ data, fakes for paid services). Phase 6 freezes a versioned release candidate an
 it locally. Only phase 7 ships it — staging first, then production — with every external
 step approved by you. A hook blocks deploy/publish commands before phase 7.
 
+**Machine-safe builds.** Builds, test suites, simulators and dev servers run inside a
+resource budget that setup detects from your RAM and CPU (`bma_state.py resources`). A
+machine with 16 GB or less gets one heavy run at a time and 2 test workers. Heavy commands
+go through `scripts/bma_heavy.py`. It queues runs across parallel agents and worktrees,
+caps test workers (`BMA_TEST_WORKERS`), and stops a run on critical memory pressure before
+the machine runs out of memory. A hook blocks build and test commands that skip the
+wrapper, and blocks watch mode (`bma_state.py set enforce_heavy false` turns the check off).
+Override the budget with
+`bma_state.py resources --slots N --builders N --workers N`.
+
 Phases 2 and 3 run in parallel after gate 1. Shared rules live in the `core` skill
 (decision policy, gates, review loops, escalation, autonomy).
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """PreToolUse (Bash): in build-my-app projects, stop destructive commands, deploy/publish
-commands before the deploy phase (local-first), and unregistered dependency installs
+commands before the deploy phase (local-first), heavy build/test commands that bypass the
+resource wrapper or start watch mode (resource budget), and unregistered dependency installs
 (licensing policy)."""
 import json
 import re
@@ -8,7 +9,7 @@ import shlex
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _common import ask, deny, is_bma_project, project_dir, read_input, state_file  # noqa: E402
+from _common import PLUGIN_ROOT, ask, deny, is_bma_project, project_dir, read_input, state_file  # noqa: E402
 
 DENY = [
     (r"\brm\s+-[a-zA-Z]*r[a-zA-Z]*f?\s+(/|~|\$HOME)(\s|$)", "Refusing to delete the root or home directory."),
@@ -25,6 +26,42 @@ DEPLOY = (r"\b(xcrun\s+altool|xcrun\s+notarytool|fastlane\s+(deliver|pilot|suppl
           r"|railway\s+up|heroku\s+(container:release|create|apps:create)|git\s+push\s+heroku|aws\s+(s3\s+sync|cloudformation\s+deploy|amplify)"
           r"|sam\s+deploy|cdk\s+deploy|serverless\s+deploy|sls\s+deploy|terraform\s+apply|pulumi\s+up"
           r"|docker\s+push|npm\s+publish|gh\s+release\s+create)\b")
+
+
+# Resource budget (skills/core/protocols/resources.md). A heavy tool counts only in command
+# position: start of the command, after a separator, or after a runner prefix such as npx.
+CMD_START = (r"(?:^|[;&|(]\s*|\b(?:then|do|else)\s+)(?:\w+=\S*\s+)*"
+             r"(?:(?:time|env|nice|command|npx|bunx|pnpm\s+(?:exec|dlx)|yarn\s+dlx|uv\s+run|poetry\s+run"
+             r"|bundle\s+exec|python3?\s+-m)\s+)*")
+HEAVY = CMD_START + (
+    r"(?:xcodebuild\b(?![^;&|]*\s-(?:version|list|showsdks|showBuildSettings|showdestinations)\b)"
+    r"|(?:\./)?gradlew?\s[^;&|]*?(?:assemble|build|[tT]est|bundle|check|connected|lint)"
+    r"|(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:test|build|e2e|check)(?::\S+)?(?=\s|$|[;&|)])"
+    r"|vitest\b|jest\b|playwright\s+test\b|cypress\s+run\b|pytest\b|go\s+test\b"
+    r"|cargo\s+(?:test|build|nextest)\b|swift\s+(?:test|build)\b|dotnet\s+(?:test|build)\b"
+    r"|mvn\b[^;&|]*\b(?:test|verify|package|install)\b|flutter\s+(?:test|build)\b"
+    r"|make\b[^;&|]*?\b(?:test|build|e2e|check)\b)")
+WATCH = r"--watch(?:All)?\b(?!=false)|\bvitest\s+(?:watch|dev)\b|\bptw\b"
+
+
+def enforce_heavy(root: Path) -> bool:
+    try:
+        return json.loads(state_file(root).read_text()).get("enforce_heavy", True) is not False
+    except Exception:
+        return True
+
+
+def resource_violation(cmd: str) -> str | None:
+    if re.search(WATCH, cmd):
+        return ("Resource budget: watch mode never exits and keeps holding memory (and a heavy slot). "
+                "Run the tests once instead (e.g. `vitest run`, no `--watch`).")
+    if "bma_heavy.py" in cmd or not re.search(HEAVY, cmd):
+        return None
+    wrapped = f"python3 {PLUGIN_ROOT / 'scripts' / 'bma_heavy.py'} --label <task> -- {shlex.quote(cmd)}"
+    return ("Resource budget: builds and test runs must go through the heavy-run wrapper, which "
+            "limits concurrent runs across agents, caps test workers, and stops on critical memory "
+            f"pressure. Re-run as:\n  {wrapped}\nWhile iterating, narrow it to the affected tests. "
+            "(The user can turn this check off with `bma_state.py set enforce_heavy false`.)")
 
 
 def deploy_phase_started(root: Path) -> bool:
@@ -87,6 +124,11 @@ def main() -> None:
         else:
             ask("This deploys, publishes, or submits the app (deploy hard stop) — the user must approve.")
         return
+    if enforce_heavy(root):
+        reason = resource_violation(cmd)
+        if reason:
+            deny(reason)
+            return
     for pattern, reason in ASK:
         if re.search(pattern, cmd):
             ask(reason)

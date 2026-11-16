@@ -21,6 +21,10 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bma_state.py <command>
 4. **Ask or decide per the decision policy** in `${CLAUDE_SKILL_DIR}/protocols/decisions.md`.
 5. **Loops converge.** Review→fix cycles follow `${CLAUDE_SKILL_DIR}/protocols/review-loop.md`.
 6. **Escalate when stuck.** Follow `${CLAUDE_SKILL_DIR}/protocols/escalation.md`.
+6a. **Never overload the machine.** Builds, tests, simulators, and dev servers follow
+   `${CLAUDE_SKILL_DIR}/protocols/resources.md`: heavy commands go through
+   `scripts/bma_heavy.py`, test workers are capped, and parallelism never exceeds
+   `bma_state.py resources`.
 7. **Local first, then release, then deploy.** Phases 0–5 develop and verify on the local
    machine only: local services, local data, fakes for paid/third-party services. Phase 6
    (release) packages and verifies a versioned candidate locally. Only phase 7 (deploy)
@@ -45,5 +49,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bma_state.py <command>
 ## Cost control
 - Use the cheapest capable model per job: mechanical checks (lint, formatting, scans) on
   small/fast agents; reviews, architecture, and design critique on the strongest model.
-- Fan out in parallel only where work is independent (feature groups, screens, audits).
+- Fan out in parallel only where work is independent (feature groups, screens, audits),
+  and only up to the resource budget for agents that build, test, or run the app.
+  Read-only agents (reviews, spec and license audits) do not count against it.
 - Before a phase expected to be large, tell the user the rough scale (number of agents/rounds).

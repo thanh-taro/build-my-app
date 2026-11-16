@@ -17,7 +17,7 @@ provisions, or deploys (the bash guard blocks those commands until phase 7).
    repeatable. Signing that needs credentials is a hard stop: the user signs, or provides
    signing set up on their machine.
 3. **Verify the release build locally**: install/serve the release build against the local
-   environment (local services, seeded data) and run the full test suite, every `FLOW-`
+   environment (local services, seeded data) and run (through `bma_heavy.py`) the full test suite, every `FLOW-`
    test, and a smoke pass of the main screens. Record results in the traceability matrix.
 4. **Release notes** from shipped features and the changelog (spec-derive skill,
    release-notes recipe).

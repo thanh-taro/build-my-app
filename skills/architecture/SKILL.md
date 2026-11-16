@@ -38,7 +38,11 @@ unknown: run the **spike-resolver** skill. Spikes that change the plan update sp
      variable; real `.env` files are gitignored; no production secrets anywhere.
 3. Code generation from specs (per `adapters/codegen.md`): data model types from the schema,
    design token constants, string catalog from `copy.md`, acknowledgements from the registry.
-4. Test harness + fixtures; tests named per `adapters/tests.md`.
+4. Test harness + fixtures; tests named per `adapters/tests.md`. **Cap parallelism in the
+   project config** (core resource protocol; settings in the stack pack). Test workers read
+   `BMA_TEST_WORKERS` with a default of 2, build daemons have a heap limit and an idle
+   timeout, and there is no watch mode in scripts. Provide a targeted test command (one
+   feature or module) next to the full suite, e.g. `make test T=<pattern>`.
 5. CI: build, unit tests, `python3 tools/spec_lint.py`, license scan, (coverage report).
 
 ## Gate G3

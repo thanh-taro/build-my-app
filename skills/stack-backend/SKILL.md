@@ -7,6 +7,10 @@ description: Stack pack for backend services in build-my-app — API-first layou
 
 - **Layout**: API contract first (from domain + features), then services per module.
 - **Build/test**: unit, contract (API schema), and integration tests with local containers.
+- **Resource limits**: one shared `docker compose` stack for all worktrees, with
+  `mem_limit` on each service. Integration tests reuse it (no per-test-run containers unless
+  isolated by schema/database name). Test runner workers read `BMA_TEST_WORKERS`
+  (pytest `-n ${BMA_TEST_WORKERS:-2}`, Go `-p`, JVM `maxParallelForks`).
 - **Security baseline**: authn/authz model ADR, secrets via environment (never in code),
   input validation, rate limiting, logging without personal data.
 - **Data**: migrations versioned; schema derived from `specs/10-domain/`.

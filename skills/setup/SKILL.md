@@ -24,6 +24,9 @@ Follow **core**. State CLI: `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bma_state.py`
    git; language runtimes; platform toolchains already present (e.g. `xcodebuild -version`,
    `xcrun simctl list`, `node -v`, Android SDK); available connectors/MCP tools (design tools,
    GitHub, browser automation). Record findings with `bma_state.py set environment '<json>'`.
+   Run `bma_state.py resources --detect` and tell the user the budget in one line, e.g.
+   "16 GB RAM → one heavy build/test run at a time, 2 test workers". Offer to lower it if
+   they keep other heavy apps open.
 5. **Initialize the project** (ask before creating files in a non-empty folder):
    - `git init` if needed (no commits yet).
    - Copy the project template: `cp -R ${CLAUDE_PLUGIN_ROOT}/templates/project/tools ./tools`,

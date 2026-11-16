@@ -25,6 +25,17 @@ seed data, fakes for paid/third-party services. Never deploy, upload, publish, o
 cloud resources during development. Shipping happens only in the release (local candidate)
 and deploy (staging → production, user-approved) phases; see `docs/deploy/`.
 
+## Machine resources
+Builds, tests, simulators, and dev servers must not overload this computer.
+- Run builds and test suites through
+  `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bma_heavy.py --label <task> -- <command>` (the
+  build-my-app plugin's script). It limits
+  how many heavy runs happen at once and stops a run on critical memory pressure.
+  `/build-my-app:status` and `bma_state.py resources` show the budget.
+- Test runners read `BMA_TEST_WORKERS` (default 2). Never use all cores or watch mode.
+- While iterating, run only the affected tests. Use one simulator/emulator and one local
+  services stack, and stop what you start.
+
 ## Licensing
 Follow the dependency and asset policy in `specs/40-technical/dependencies.md` and its ADR.
 Register every dependency and asset before use.

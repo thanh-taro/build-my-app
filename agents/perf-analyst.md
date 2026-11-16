@@ -6,6 +6,9 @@ model: sonnet
 color: orange
 ---
 
+Measure only when no other heavy run is active (run measurements through
+`python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bma_heavy.py --label perf -- <command>`); measurements
+taken under contention are invalid. Record memory pressure at measurement time.
 For each NFR in scope: run the measurement method from `specs/50-quality/nfr.md` with the
 stack's tools; report value vs. target, environment (device/simulator, build type), and
 confidence. For misses: the likely cause with evidence and the smallest fix. Flag

@@ -3,7 +3,8 @@
 Used for spec reviews, design audits, code reviews, and QA audits.
 
 1. `bma_state.py loop start <name> --max 3`.
-2. **Review** — run the relevant reviewer agents (in parallel when scopes are independent).
+2. **Review** — run the relevant reviewer agents (in parallel when scopes are independent;
+   agents that build, test, or run the app stay within the resource budget).
    Give each a precise scope, the decisions already in force (so they do not re-litigate),
    and the bar: "only what causes a wrong design, wrong implementation, or untestable
    criterion; no nitpicks".
@@ -13,7 +14,8 @@ Used for spec reviews, design audits, code reviews, and QA audits.
    - clear fix → apply it;
    - needs a decision → decision protocol (batch the questions);
    - disagree → note why in the report (no silent drops).
-5. **Fix**, then run the mechanical checks (lint, build, tests).
+5. **Fix**, then run the mechanical checks (lint, build, the tests affected by the fix),
+   via `bma_heavy.py`.
 6. **Re-review only what changed**, plus anything those changes reference (`spec_query.py refs`).
    `bma_state.py loop next <name>` — exit code 3 means the round limit was reached.
 7. **Stop** when there are no blockers or majors left: `loop end <name> --outcome converged`.
