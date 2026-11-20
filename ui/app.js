@@ -149,7 +149,7 @@
     const kind = item.who === 'you' ? 'you' : item.who === 'assistant' ? 'assistant' : item.who === 'system' ? 'system' : 'agent';
     const li = el('li', kind + (item.kind === 'note' && kind === 'assistant' ? ' note' : ''));
     const who = el('div', 'who');
-    who.append(el('b', null, { you: 'You', assistant: 'Assistant', system: 'Note' }[kind] || item.who));
+    who.append(el('b', null, { you: 'You', assistant: window.bmaCast('assistant').name, system: 'Note' }[kind] || item.who));
     if (item.via) who.append(el('span', 'badge', item.via === 'terminal' ? '⌨ terminal' : item.via === 'web' ? '🌐 web' : `✉ ${item.via}`));
     who.append(el('span', null, hhmm(item.ts)));
     li.append(who, el('div', 'msg', item.text));
