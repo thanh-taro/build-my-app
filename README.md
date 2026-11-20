@@ -189,6 +189,18 @@ says how to turn chat on. Messages typed in the page reach the session like term
 Each message shows whether it was delivered and whether Claude reacted. Organizations on
 claude.ai Team or Enterprise must enable channels first (`channelsEnabled`).
 
+**Things that need you** appear as cards above the chat box:
+
+- **Tool approvals.** When Claude Code asks before running a tool, the same prompt appears in
+  the page with *Allow once* and *Deny*. The terminal prompt stays open; the first answer
+  counts, and a card closes by itself when you answer in the terminal.
+- **Hard stops stay in the terminal.** Deploying, publishing, submitting, force-pushing, and
+  tools that look like payments, messages, or secrets can be *denied* from the page but only
+  *allowed* in the terminal. The chat bridge enforces this itself, not just the page.
+- **Gates and decisions.** A phase waiting at its gate, and each open decision with its
+  options (the recommended one marked), get buttons that put your answer in the chat box to
+  check and send.
+
 The UI adds no load when it is off. Its hooks run in the background and do nothing unless the
 server is running. The chat bridge (`bma_channel.py`, an MCP server the plugin declares) starts
 with every session but stays idle outside build-my-app projects and in sessions started without
@@ -225,7 +237,7 @@ python3 scripts/bma_ui_demo.py --open        # loops until Ctrl-C; --once, --spe
 
 ## Status
 
-v0.4.0 — skeleton. Web UI (`/build-my-app:ui`) with a live agent room and chat from the page. Builds and tests stay within a
+v0.5.0 — skeleton. Web UI (`/build-my-app:ui`) with a live agent room, chat, and approvals from the page. Builds and tests stay within a
 machine resource budget. Phases 0–1 and the core protocols are fully specified; phases 2–8 have
 complete step lists but are untested end to end. See `ROADMAP.md`.
 

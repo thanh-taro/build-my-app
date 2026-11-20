@@ -19,6 +19,7 @@ import json
 import mimetypes
 import os
 import queue
+import re
 import secrets
 import signal
 import socket
@@ -86,6 +87,7 @@ class Model:
         self.chats: dict[str, dict] = {}       # web chat_id → its feed item (carries "status")
         self.status_fresh: list[dict] = []     # chat status changes not yet pushed
         self.last_activity = 0.0               # last sign of Claude working (any hook event)
+        self.perms: dict[str, dict] = {}       # relayed tool-approval prompts: request_id → card
         self.last_interim = ""
 
     def take_status(self) -> list[dict]:
@@ -146,6 +148,8 @@ class Model:
         if ev == "delivered":
             self._chat_status(str(e.get("chat_id")), "delivered", ts)
             return set()
+        if ev in ("permission", "permission_answer", "permission_refused", "tool_done"):
+            return self._permission(ev, e, ts)
         if ev == "spawn" and not aid:
             self.pending.append({"id": e.get("id"), "type": short_type(e.get("spawn_type")),
                                  "desc": e.get("desc") or "", "ts": ts})
@@ -225,7 +229,7 @@ class Model:
             if any(i["text"] and i["text"] in text and ts - i["ts"] < 600 for i in self.chats.values()):
                 return set()
             self._say("you", text, ts, via=via)
-            return {"feed"}
+            return {"feed"} | self._close_perms("closed")
         if ev == "reply" and not aid:
             text = e.get("text") or ""
             if e.get("interim"):
@@ -236,8 +240,49 @@ class Model:
             if text.strip() and text.strip() != self.last_interim.strip():
                 self._say("assistant", text, ts, kind="reply")
             self.last_interim = ""
-            return {"agents", "feed"}
+            return {"agents", "feed"} | self._close_perms("closed")
         return set()
+
+    def _permission(self, ev: str, e: dict, ts: float) -> set[str]:
+        rid = str(e.get("request_id") or "")
+        if ev == "permission":
+            self.perms[rid] = {"request_id": rid, "tool": e.get("tool") or "", "desc": e.get("desc") or "",
+                               "preview": e.get("preview") or "", "hard": bool(e.get("hard")),
+                               "reason": e.get("reason"), "bridge": e.get("bridge"), "ts": ts, "state": "open"}
+            self.perms = dict(list(self.perms.items())[-30:])
+            return {"perms"}
+        p = self.perms.get(rid)
+        if ev == "permission_answer" and p:
+            p["state"] = "allowed" if e.get("behavior") == "allow" else "denied"
+            what = p["desc"] or p["tool"]
+            self._say("system", f"You {p['state']} from the page: {what}", ts, kind="perm")
+            return {"perms", "feed"}
+        if ev == "permission_refused" and p:
+            p["refused"] = True
+            return {"perms"}
+        if ev == "tool_done":  # the tool ran, so its prompt was answered in the terminal
+            fold = lambda t: re.sub(r"[\s\\\"'`]", "", t or "")
+            sig = fold(e.get("sig"))[:60]
+            for p in self.perms.values():
+                if p["state"] == "open" and p["tool"] == e.get("tool") and sig and sig in fold(p["preview"]):
+                    p["state"] = "answered"
+                    return {"perms"}
+        return set()
+
+    def _close_perms(self, state: str) -> set[str]:
+        open_ = [p for p in self.perms.values() if p["state"] == "open"]
+        for p in open_:
+            p["state"] = state
+        return {"perms"} if open_ else set()
+
+    def perms_payload(self) -> list[dict]:
+        with self.lock:
+            return [dict(p) for p in self.perms.values() if p["state"] == "open"]
+
+    def open_perm(self, rid: str) -> dict | None:
+        with self.lock:
+            p = self.perms.get(rid)
+            return dict(p) if p and p["state"] == "open" else None
 
     def _owner(self, label: str) -> dict | None:
         live = [a for a in self.agents.values() if a["label"] == label and a["status"] != "done"]
@@ -329,7 +374,7 @@ def bridges(root: Path) -> dict:
 
 def snapshot(root: Path, model: "Model") -> dict:
     return {"state": state_payload(root), **model.agents_payload(), "feed": model.feed_payload(),
-            "bridge": bridges(root)}
+            "bridge": bridges(root), "perms": model.perms_payload()}
 
 
 # -- server -------------------------------------------------------------------
@@ -405,6 +450,11 @@ def watch(root: Path, model: Model, hub: Hub, stop: threading.Event) -> None:
                     hub.send("chat_status", st)
                 if "agents" in changed:
                     hub.send("agents", model.agents_payload())
+                if "perms" in changed:
+                    perms = model.perms_payload()
+                    hub.send("perms", perms)
+                    flag = ui_dir(root) / "perm_open"  # tells the PostToolUse hook to report finished tools
+                    flag.touch() if perms else flag.unlink(missing_ok=True)
         except FileNotFoundError:
             pass
         stop.wait(POLL)
@@ -460,12 +510,10 @@ def make_handler(root: Path, port: int, token: str, model: Model, hub: Hub):
                 return self._stream()
             return self._deny(404, "not found")
 
-        def do_POST(self):
+        def _read_json(self) -> dict | None:
+            """Shared checks for POSTs from the page; sends the error and returns None on failure."""
             if self.headers.get("Host") not in allowed_hosts:
                 return self._deny(421, "wrong host")
-            u = urlparse(self.path)
-            if u.path != "/api/chat":
-                return self._deny(404, "not found")
             origin = self.headers.get("Origin")
             if origin and origin.replace("http://", "") not in allowed_hosts:
                 return self._deny(403, "wrong origin")
@@ -478,9 +526,25 @@ def make_handler(root: Path, port: int, token: str, model: Model, hub: Hub):
             if length > 64 * 1024:
                 return self._deny(413, "message too long")
             try:
-                text = str(json.loads(self.rfile.read(length) or b"{}").get("text") or "").strip()
+                body = json.loads(self.rfile.read(length) or b"{}")
             except ValueError:
                 return self._deny(400, "bad JSON")
+            return body if isinstance(body, dict) else self._deny(400, "bad JSON")
+
+        def _ok(self, payload: dict):
+            self._headers(200, "application/json; charset=utf-8")
+            self.wfile.write(json.dumps(payload).encode())
+
+        def do_POST(self):
+            path = urlparse(self.path).path
+            if path not in ("/api/chat", "/api/permission"):
+                return self._deny(404, "not found")
+            body = self._read_json()
+            if body is None:
+                return
+            if path == "/api/permission":
+                return self._permission(body)
+            text = str(body.get("text") or "").strip()
             if not text:
                 return self._deny(400, "empty message")
             if len(text) > MAX_CHAT:
@@ -493,8 +557,22 @@ def make_handler(root: Path, port: int, token: str, model: Model, hub: Hub):
             with open(ui_dir(root) / "inbox.jsonl", "a") as f:
                 f.write(json.dumps(msg, ensure_ascii=False) + "\n")
             append(root, {"ev": "prompt", "via": "web", "chat_id": chat_id, "text": text})
-            self._headers(200, "application/json; charset=utf-8")
-            self.wfile.write(json.dumps({"chat_id": chat_id}).encode())
+            self._ok({"chat_id": chat_id})
+
+        def _permission(self, body: dict):
+            rid, behavior = str(body.get("request_id") or ""), body.get("behavior")
+            if behavior not in ("allow", "deny"):
+                return self._deny(400, "behavior must be allow or deny")
+            p = model.open_perm(rid)
+            if not p:
+                return self._deny(410, "This request is no longer open. It was answered or Claude moved on.")
+            if behavior == "allow" and p["hard"]:
+                return self._deny(409, "This is a hard stop: allow it in the terminal. You can deny it here.")
+            d = ui_dir(root) / "verdicts"
+            d.mkdir(exist_ok=True)
+            with open(d / f"{int(p['bridge'])}.jsonl", "a") as f:
+                f.write(json.dumps({"request_id": rid, "behavior": behavior}) + "\n")
+            self._ok({"ok": True})
 
         def _static(self, rel: str, extra: dict | None = None):
             p = (STATIC / rel).resolve()
@@ -534,6 +612,7 @@ def serve(root: Path, port: int, token: str) -> None:
     events_path(root).write_text("")  # each run starts with a fresh room
     (d / "inbox.jsonl").write_text("")
     (d / "inbox.offset").unlink(missing_ok=True)
+    (d / "perm_open").unlink(missing_ok=True)
     model, hub, stop = Model(), Hub(), threading.Event()
     httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(root, port, token, model, hub))
     httpd.daemon_threads = True

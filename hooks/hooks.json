@@ -18,7 +18,7 @@
     "PostToolUse": [
       { "matcher": "Edit|Write|MultiEdit",
         "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/post_edit_lint.py\"" } ] },
-      { "matcher": "Agent|Task",
+      { "matcher": "*",
         "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/ui_events.py\"", "async": true } ] }
     ],
     "SubagentStart": [

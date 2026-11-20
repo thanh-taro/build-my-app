@@ -17,6 +17,7 @@
   <section class="desk" aria-label="Front desk">
     <h2>Front desk</h2>
     <ol class="feed" id="feed" aria-live="polite"></ol>
+    <div class="tray" id="tray" aria-label="Needs you" aria-live="polite" hidden></div>
     <form class="chat" id="chat">
       <label for="chat-input" class="sr">Message to Claude</label>
       <textarea id="chat-input" rows="2" maxlength="4000" disabled placeholder="Checking for a Claude Code session…"></textarea>
@@ -49,7 +50,7 @@
     <div id="decisions-box" hidden>
       <h3>Waiting on you</h3>
       <ul class="decisions" id="decisions"></ul>
-      <p class="muted small">Answer in the terminal with <code>/build-my-app:decide</code>.</p>
+      <p class="muted small">Answer from the cards in the front desk, or in the terminal with <code>/build-my-app:decide</code>.</p>
     </div>
     <div id="loops-box" hidden>
       <h3>Review loops</h3>
