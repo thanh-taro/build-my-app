@@ -137,9 +137,10 @@ def handle(msg: dict) -> None:
     if method == "initialize":
         write({"jsonrpc": "2.0", "id": mid, "result": {
             "protocolVersion": (msg.get("params") or {}).get("protocolVersion", "2025-06-18"),
-            "capabilities": {"experimental": {"claude/channel": {}, "claude/channel/permission": {} if CHANNEL else False},
+            # Omit the permission key when chat is off: Claude Code rejects anything but an object there.
+            "capabilities": {"experimental": {"claude/channel": {}, **({"claude/channel/permission": {}} if CHANNEL else {})},
                              "tools": {}},
-            "serverInfo": {"name": "bma", "version": "0.5.0"},
+            "serverInfo": {"name": "bma", "version": "0.5.1"},
             "instructions": INSTRUCTIONS,
         }})
     elif method == "tools/list":

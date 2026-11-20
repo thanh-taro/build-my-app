@@ -184,7 +184,7 @@
     renderTray();
     $('#chat-note-text').textContent = b.sessions
       ? 'Claude Code is running, but without chat. To chat from this page, restart it in this project with:'
-      : 'No Claude Code session is connected. To chat from this page, start one in this project with:';
+      : 'No Claude Code session has checked in. If one is running here, run /mcp in it and check that the "bma" server is connected; otherwise start one in this project with:';
   }
   const input = $('#chat-input');
   input.addEventListener('input', () => { $('#send').disabled = !chatOn || !input.value.trim(); });

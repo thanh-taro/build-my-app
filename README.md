@@ -237,7 +237,7 @@ python3 scripts/bma_ui_demo.py --open        # loops until Ctrl-C; --once, --spe
 
 ## Status
 
-v0.5.0 — skeleton. Web UI (`/build-my-app:ui`) with a live agent room, chat, and approvals from the page. Builds and tests stay within a
+v0.5.1 — skeleton. Web UI (`/build-my-app:ui`) with a live agent room, chat, and approvals from the page. Builds and tests stay within a
 machine resource budget. Phases 0–1 and the core protocols are fully specified; phases 2–8 have
 complete step lists but are untested end to end. See `ROADMAP.md`.
 

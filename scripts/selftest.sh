@@ -112,6 +112,10 @@ print("send with no chat session →", post("hi"), "(expect 409)")
 off = subprocess.run([sys.executable, f"{P}/scripts/bma_channel.py"], input='{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n',
                      capture_output=True, text=True, env=dict(os.environ, BMA_CHANNEL="0")).stdout
 print("bridge without channels → tools:", json.loads(off)["result"]["tools"])
+init = subprocess.run([sys.executable, f"{P}/scripts/bma_channel.py"], input='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n',
+                      capture_output=True, text=True, env=dict(os.environ, BMA_CHANNEL="0")).stdout
+caps = json.loads(init)["result"]["capabilities"]["experimental"]
+print("capabilities are all objects (Claude Code rejects anything else):", all(isinstance(v, dict) for v in caps.values()))
 br = subprocess.Popen([sys.executable, f"{P}/scripts/bma_channel.py"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
                       env=dict(os.environ, BMA_CHANNEL="1"))
 out = []; threading.Thread(target=lambda: [out.append(json.loads(l)) for l in br.stdout], daemon=True).start()
