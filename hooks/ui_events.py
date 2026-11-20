@@ -17,6 +17,8 @@ from bma_events import append, clip, clip_text, first_line, lower_first, ui_enab
 
 AGENT_TOOLS = ("Agent", "Task")
 LABEL_RE = re.compile(r"bma_heavy\.py\b.*?--label[ =]([^\s'\"]+)")
+CHANNEL_RE = re.compile(r'^\s*<channel source="([^"]*)"[^>]*>\s*(.*?)\s*</channel>\s*$', re.S)
+OWN_CHANNEL = "plugin:build-my-app:"
 
 
 def rel(path: str, root: Path) -> str:
@@ -98,7 +100,14 @@ def build(data: dict, root: Path) -> dict | None:
         return {**base, "ev": "spawned", "id": data.get("tool_use_id"), "child": tr.get("agentId"),
                 "status": tr.get("status")}
     if ev == "UserPromptSubmit":
-        return {**base, "ev": "prompt", "via": "terminal", "text": clip_text(data.get("prompt"), 1200)}
+        prompt = data.get("prompt") or ""
+        m = CHANNEL_RE.match(prompt)
+        if m and m.group(1).startswith(OWN_CHANNEL):
+            return None  # typed in the web page: the server already recorded it
+        if m:  # another channel (Telegram, Discord...): show its text, labeled by source
+            return {**base, "ev": "prompt", "via": m.group(1).split(":")[-1] or "channel",
+                    "text": clip_text(m.group(2), 1200)}
+        return {**base, "ev": "prompt", "via": "terminal", "text": clip_text(prompt, 1200)}
     if ev == "Stop":
         return {**base, "ev": "reply", "text": clip_text(data.get("last_assistant_message"), 2000)}
     return None

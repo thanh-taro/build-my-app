@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "bma": {
+      "command": "python3",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/bma_channel.py"]
+    }
+  }
+}

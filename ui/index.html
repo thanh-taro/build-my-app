@@ -18,10 +18,15 @@
     <h2>Front desk</h2>
     <ol class="feed" id="feed" aria-live="polite"></ol>
     <form class="chat" id="chat">
-      <label for="chat-input" class="sr">Message</label>
-      <textarea id="chat-input" rows="2" disabled placeholder="Chat here comes next. For now, type in the terminal."></textarea>
-      <button type="submit" disabled>Send</button>
+      <label for="chat-input" class="sr">Message to Claude</label>
+      <textarea id="chat-input" rows="2" maxlength="4000" disabled placeholder="Checking for a Claude Code session…"></textarea>
+      <button type="submit" id="send" disabled>Send</button>
     </form>
+    <div class="chat-note" id="chat-note" hidden>
+      <p id="chat-note-text"></p>
+      <div class="cmd"><code id="chat-cmd">claude --dangerously-load-development-channels plugin:build-my-app@taro-tools</code><button type="button" id="copy-cmd">Copy</button></div>
+    </div>
+    <p class="chat-error" id="chat-error" role="alert" hidden></p>
   </section>
 
   <section class="room" aria-label="Back office">

@@ -95,3 +95,36 @@ for name, url, headers in (("no token", f"{base}/api/snapshot", {}),
 PY
 python3 "$P/scripts/bma_ui.py" stop
 ls .build-my-app/tmp/ui/ui.json 2>/dev/null || echo "(ui.json removed → hooks idle again)"
+
+echo "== 8. web chat: bridge (channel MCP server) ↔ page"
+python3 "$P/scripts/bma_ui.py" start --port 7399 | tail -2
+python3 - "$P" <<'PY'
+import json, os, subprocess, sys, threading, time, urllib.request, urllib.error
+P = sys.argv[1]
+i = json.load(open(".build-my-app/tmp/ui/ui.json")); base = f"http://127.0.0.1:{i['port']}"
+def post(text, **h):
+    hdr = {"Content-Type": "application/json", "X-Token": i["token"], **h}
+    try:
+        return urllib.request.urlopen(urllib.request.Request(f"{base}/api/chat", data=json.dumps({"text": text}).encode(), headers=hdr)).status
+    except urllib.error.HTTPError as e:
+        return e.code
+print("send with no chat session →", post("hi"), "(expect 409)")
+off = subprocess.run([sys.executable, f"{P}/scripts/bma_channel.py"], input='{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n',
+                     capture_output=True, text=True, env=dict(os.environ, BMA_CHANNEL="0")).stdout
+print("bridge without channels → tools:", json.loads(off)["result"]["tools"])
+br = subprocess.Popen([sys.executable, f"{P}/scripts/bma_channel.py"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+                      env=dict(os.environ, BMA_CHANNEL="1"))
+out = []; threading.Thread(target=lambda: [out.append(json.loads(l)) for l in br.stdout], daemon=True).start()
+br.stdin.write('{"jsonrpc":"2.0","id":"d","method":"server/discover"}\n{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25"}}\n'); br.stdin.flush()
+time.sleep(1.5)
+print("discover probe → error", out[0]["error"]["code"], "| channel capability:", "claude/channel" in out[1]["result"]["capabilities"]["experimental"])
+print("wrong token →", post("x", **{"X-Token": "nope"}), "| foreign origin →", post("x", Origin="https://evil.test"))
+print("send →", post("What's next?"))
+time.sleep(1.2)
+n = [m for m in out if m.get("method") == "notifications/claude/channel"]
+print("pushed into the session:", n[0]["params"]["content"] if n else None)
+snap = json.load(urllib.request.urlopen(f"{base}/api/snapshot?token={i['token']}"))
+print("page:", snap["bridge"], [(f["who"], f.get("status")) for f in snap["feed"]])
+br.stdin.close(); br.wait(5)
+PY
+python3 "$P/scripts/bma_ui.py" stop

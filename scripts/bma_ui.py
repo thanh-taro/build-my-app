@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""build-my-app web UI server (v0.3: watch only). Standard library only.
+"""build-my-app web UI server. Standard library only.
 
   bma_ui.py start [--port N] [--open]   Start in the background and print the URL
   bma_ui.py status                      Print whether it runs, and its URL
@@ -9,7 +9,8 @@ Serves the room (ui/), a snapshot API, and a server-sent event stream on 127.0.0
 Every API and stream request needs the random token in the URL that `start` prints.
 While it runs, `ui.json` in `.build-my-app/tmp/ui/` tells the hooks to record events;
 the server tails that event log and `state.json` and pushes changes to the browser.
-Chat from the browser arrives in v0.4 (Claude Code channels); for now, type in the terminal.
+Messages typed in the page go to an inbox that the chat bridge (bma_channel.py, an MCP
+channel inside the Claude Code session) passes into the session.
 """
 from __future__ import annotations
 
@@ -33,7 +34,7 @@ from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bma_state  # noqa: E402
-from bma_events import clip, events_path, lower_first, ui_dir, ui_info_path  # noqa: E402
+from bma_events import append, clip, events_path, lower_first, ui_dir, ui_info_path  # noqa: E402
 from bma_resources import memory_state  # noqa: E402
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
@@ -42,6 +43,9 @@ DEFAULT_PORT = 7311
 POLL = 0.4
 DONE_KEEP = 40          # finished agents kept for the timeline
 STUCK_AFTER = 3         # consecutive failed heavy runs before an agent shows as stuck
+QUIET_AFTER = 45        # seconds with no sign of Claude after a web message is delivered
+BRIDGE_STALE = 15       # seconds without a heartbeat before a chat bridge counts as gone
+MAX_CHAT = 4000         # characters per web message
 
 
 def project_root() -> Path:
@@ -79,6 +83,34 @@ class Model:
         self.heavy: dict[str, dict] = {}       # label → {state, code, ts}
         self.assistant = {"now": "", "ts": 0.0}
         self.fresh: list[dict] = []            # feed items not yet pushed to browsers
+        self.chats: dict[str, dict] = {}       # web chat_id → its feed item (carries "status")
+        self.status_fresh: list[dict] = []     # chat status changes not yet pushed
+        self.last_activity = 0.0               # last sign of Claude working (any hook event)
+        self.last_interim = ""
+
+    def take_status(self) -> list[dict]:
+        with self.lock:
+            out, self.status_fresh = self.status_fresh, []
+            return out
+
+    def _chat_status(self, chat_id: str, status: str, ts: float) -> None:
+        item = self.chats.get(chat_id)
+        if item and item.get("status") != status:
+            item.update(status=status, status_ts=ts)
+            self.status_fresh.append({"chat_id": chat_id, "status": status})
+
+    def check_quiet(self, now: float) -> bool:
+        """Flag delivered web messages that got no sign of Claude for a while."""
+        changed = False
+        with self.lock:
+            for cid, item in self.chats.items():
+                if item.get("status") == "delivered" and now - item["status_ts"] > QUIET_AFTER:
+                    self._chat_status(cid, "quiet", now)
+                    self._say("system", "Claude hasn't reacted to your message yet. It may still be busy with a "
+                                        "long step. If the terminal never shows your message, restart Claude "
+                                        "with channels (see the note under the chat box).", now, kind="note")
+                    changed = True
+        return changed
 
     def take_fresh(self) -> list[dict]:
         with self.lock:
@@ -106,6 +138,14 @@ class Model:
 
     def _apply(self, e: dict) -> set[str]:
         ev, ts, aid = e.get("ev"), float(e.get("ts") or time.time()), e.get("agent")
+        if ev not in ("prompt", "delivered", "heavy_wait", "heavy_run", "heavy_done") and not e.get("interim"):
+            self.last_activity = ts
+            for cid, item in self.chats.items():  # Claude is active again: it has (or will) read them
+                if item.get("status") in ("delivered", "quiet") and item["status_ts"] <= ts:
+                    self._chat_status(cid, "seen", ts)
+        if ev == "delivered":
+            self._chat_status(str(e.get("chat_id")), "delivered", ts)
+            return set()
         if ev == "spawn" and not aid:
             self.pending.append({"id": e.get("id"), "type": short_type(e.get("spawn_type")),
                                  "desc": e.get("desc") or "", "ts": ts})
@@ -143,6 +183,8 @@ class Model:
             self.assistant = {"now": e.get("text") or "", "ts": ts}
             return {"agents"}
         if ev == "agent_stop" and aid:
+            if aid not in self.agents:  # Claude Code's own helper agents stop without ever starting
+                return set()
             a = self._agent(aid, e.get("type"), ts)
             result = clip((e.get("text") or "").split("\n")[0], 200)
             a.update(status="done", result=result, now=result or "Finished", updated=ts, ended=ts)
@@ -173,11 +215,27 @@ class Model:
                 self.heavy = {k: v for k, v in self.heavy.items() if v["state"] != "done" or ts - v["ts"] < 120}
             return {"agents"}
         if ev == "prompt" and not aid:
-            self._say("you", e.get("text") or "", ts, via=e.get("via") or "terminal")
+            text, via = e.get("text") or "", e.get("via") or "terminal"
+            if via == "web":
+                self._say("you", text, ts, via="web", chat_id=e.get("chat_id"), status="sent", status_ts=ts)
+                self.chats[str(e.get("chat_id"))] = self.feed[-1]
+                self.chats = dict(list(self.chats.items())[-50:])
+                return {"feed"}
+            # A web message can also reach the prompt hook; don't show it twice.
+            if any(i["text"] and i["text"] in text and ts - i["ts"] < 600 for i in self.chats.values()):
+                return set()
+            self._say("you", text, ts, via=via)
             return {"feed"}
         if ev == "reply" and not aid:
+            text = e.get("text") or ""
+            if e.get("interim"):
+                self.last_interim = text
+                self._say("assistant", text, ts, kind="note")
+                return {"feed"}
             self.assistant = {"now": "", "ts": ts}
-            self._say("assistant", e.get("text") or "", ts, kind="reply")
+            if text.strip() and text.strip() != self.last_interim.strip():
+                self._say("assistant", text, ts, kind="reply")
+            self.last_interim = ""
             return {"agents", "feed"}
         return set()
 
@@ -252,6 +310,28 @@ def state_payload(root: Path) -> dict:
     }
 
 
+def bridges(root: Path) -> dict:
+    """Claude Code sessions with the chat bridge running, and how many can take web messages."""
+    out = {"sessions": 0, "chat": 0}
+    d = ui_dir(root) / "bridges"
+    for f in d.glob("*.json") if d.is_dir() else []:
+        try:
+            b = json.loads(f.read_text())
+        except Exception:
+            continue
+        if time.time() - b.get("ts", 0) > BRIDGE_STALE or not pid_alive(b.get("pid")):
+            f.unlink(missing_ok=True)
+            continue
+        out["sessions"] += 1
+        out["chat"] += 1 if b.get("channel") else 0
+    return out
+
+
+def snapshot(root: Path, model: "Model") -> dict:
+    return {"state": state_payload(root), **model.agents_payload(), "feed": model.feed_payload(),
+            "bridge": bridges(root)}
+
+
 # -- server -------------------------------------------------------------------
 
 class Hub:
@@ -283,8 +363,17 @@ class Hub:
 
 def watch(root: Path, model: Model, hub: Hub, stop: threading.Event) -> None:
     sp, ep = root / ".build-my-app" / "state.json", events_path(root)
-    state_mtime, offset, last_pressure, last_push = 0.0, 0, None, 0.0
+    state_mtime, offset, last_pressure, last_push, last_bridge = 0.0, 0, None, 0.0, None
     while not stop.is_set():
+        b = bridges(root)
+        if b != last_bridge:
+            last_bridge = b
+            hub.send("bridge", b)
+        if model.check_quiet(time.time()):
+            for item in model.take_fresh():
+                hub.send("feed", item)
+            for st in model.take_status():
+                hub.send("chat_status", st)
         try:
             m = sp.stat().st_mtime
             pressure = memory_state() if time.time() - last_push > 10 else last_pressure
@@ -312,6 +401,8 @@ def watch(root: Path, model: Model, hub: Hub, stop: threading.Event) -> None:
                     changed |= model.apply(e)
                 for item in model.take_fresh():
                     hub.send("feed", item)
+                for st in model.take_status():
+                    hub.send("chat_status", st)
                 if "agents" in changed:
                     hub.send("agents", model.agents_payload())
         except FileNotFoundError:
@@ -360,8 +451,7 @@ def make_handler(root: Path, port: int, token: str, model: Model, hub: Hub):
             if u.path == "/api/snapshot":
                 if not self._token_ok(qs):
                     return self._deny()
-                body = json.dumps({"state": state_payload(root), **model.agents_payload(),
-                                   "feed": model.feed_payload()}, ensure_ascii=False).encode()
+                body = json.dumps(snapshot(root, model), ensure_ascii=False).encode()
                 self._headers(200, "application/json; charset=utf-8")
                 return self.wfile.write(body)
             if u.path == "/events":
@@ -369,6 +459,42 @@ def make_handler(root: Path, port: int, token: str, model: Model, hub: Hub):
                     return self._deny()
                 return self._stream()
             return self._deny(404, "not found")
+
+        def do_POST(self):
+            if self.headers.get("Host") not in allowed_hosts:
+                return self._deny(421, "wrong host")
+            u = urlparse(self.path)
+            if u.path != "/api/chat":
+                return self._deny(404, "not found")
+            origin = self.headers.get("Origin")
+            if origin and origin.replace("http://", "") not in allowed_hosts:
+                return self._deny(403, "wrong origin")
+            # Token only in a header: a cross-site form can't set one, and a JSON body forces a preflight.
+            if not secrets.compare_digest((self.headers.get("X-Token") or "").encode(), token.encode()):
+                return self._deny()
+            if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
+                return self._deny(415, "send JSON")
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > 64 * 1024:
+                return self._deny(413, "message too long")
+            try:
+                text = str(json.loads(self.rfile.read(length) or b"{}").get("text") or "").strip()
+            except ValueError:
+                return self._deny(400, "bad JSON")
+            if not text:
+                return self._deny(400, "empty message")
+            if len(text) > MAX_CHAT:
+                return self._deny(413, f"Messages are limited to {MAX_CHAT} characters.")
+            if not bridges(root)["chat"]:
+                return self._deny(409, "No Claude Code session with chat turned on. Start Claude with: "
+                                       "claude --dangerously-load-development-channels plugin:build-my-app@taro-tools")
+            chat_id = f"w{int(time.time() * 1000) % 10**9}{secrets.randbelow(100):02d}"
+            msg = {"chat_id": chat_id, "ts": round(time.time(), 3), "text": text}
+            with open(ui_dir(root) / "inbox.jsonl", "a") as f:
+                f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+            append(root, {"ev": "prompt", "via": "web", "chat_id": chat_id, "text": text})
+            self._headers(200, "application/json; charset=utf-8")
+            self.wfile.write(json.dumps({"chat_id": chat_id}).encode())
 
         def _static(self, rel: str, extra: dict | None = None):
             p = (STATIC / rel).resolve()
@@ -384,7 +510,7 @@ def make_handler(root: Path, port: int, token: str, model: Model, hub: Hub):
             self._headers(200, "text/event-stream", {"Connection": "keep-alive"})
             q = hub.add()
             try:
-                snap = {"state": state_payload(root), **model.agents_payload(), "feed": model.feed_payload()}
+                snap = snapshot(root, model)
                 self.wfile.write(f"event: snapshot\ndata: {json.dumps(snap, ensure_ascii=False)}\n\n".encode())
                 self.wfile.flush()
                 while True:
@@ -406,6 +532,8 @@ def serve(root: Path, port: int, token: str) -> None:
     d = ui_dir(root)
     d.mkdir(parents=True, exist_ok=True)
     events_path(root).write_text("")  # each run starts with a fresh room
+    (d / "inbox.jsonl").write_text("")
+    (d / "inbox.offset").unlink(missing_ok=True)
     model, hub, stop = Model(), Hub(), threading.Event()
     httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(root, port, token, model, hub))
     httpd.daemon_threads = True
@@ -468,7 +596,13 @@ def cmd_start(a) -> None:
         if not info:
             sys.exit(f"The UI server did not start. See {ui_dir(root) / 'ui.log'}.")
         print(f"build-my-app UI: {info['url']}")
-    print("Watch-only for now: the room, the feed, and the status panel update live. Keep chatting in the terminal.")
+    time.sleep(1.5)  # give this session's chat bridge a moment to check in
+    b = bridges(root)
+    if b["chat"]:
+        print("Chat is on: messages typed in the page go to this Claude Code session.")
+    else:
+        print("Watch-only: the page updates live. To chat from it too, start Claude Code with:\n"
+              "  claude --dangerously-load-development-channels plugin:build-my-app@taro-tools")
     if a.open:
         webbrowser.open(info["url"])
 
