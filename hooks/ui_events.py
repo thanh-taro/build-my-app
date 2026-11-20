@@ -2,10 +2,11 @@
 """UI event recorder (async hook): turns hook input into short, human-readable events for the
 build-my-app web UI. A no-op unless the UI server is running in this project.
 
-Registered for SubagentStart, SubagentStop, PreToolUse (all tools), PostToolUse (Agent),
+Registered for SubagentStart, SubagentStop, PreToolUse and PostToolUse (all tools),
 UserPromptSubmit, and Stop. It records what an agent is doing in a few words, never file
 contents or full commands.
 """
+import json
 import re
 import sys
 from pathlib import Path
@@ -13,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from _common import is_bma_project, project_dir, read_input  # noqa: E402
-from bma_events import append, clip, clip_text, first_line, lower_first, ui_enabled  # noqa: E402
+from bma_events import append, clip, clip_text, first_line, lower_first, ui_dir, ui_enabled  # noqa: E402
 
 AGENT_TOOLS = ("Agent", "Task")
 LABEL_RE = re.compile(r"bma_heavy\.py\b.*?--label[ =]([^\s'\"]+)")
@@ -99,6 +100,13 @@ def build(data: dict, root: Path) -> dict | None:
         tr = tr if isinstance(tr, dict) else {}
         return {**base, "ev": "spawned", "id": data.get("tool_use_id"), "child": tr.get("agentId"),
                 "status": tr.get("status")}
+    if ev == "PostToolUse":
+        # Only while the page shows an approval card: tells it the prompt was answered (in the terminal).
+        if not (ui_dir(root) / "perm_open").exists():
+            return None
+        ti = data.get("tool_input") or {}
+        sig = ti.get("command") or ti.get("file_path") or json.dumps(ti, ensure_ascii=False)
+        return {**base, "ev": "tool_done", "tool": data.get("tool_name"), "sig": clip(str(sig), 160)}
     if ev == "UserPromptSubmit":
         prompt = data.get("prompt") or ""
         m = CHANNEL_RE.match(prompt)

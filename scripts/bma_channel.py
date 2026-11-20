@@ -7,8 +7,10 @@ unless all of these hold:
   - this Claude Code process was started with channels for the plugin
     (`--channels` or `--dangerously-load-development-channels` naming build-my-app),
   - the UI server is running (`/build-my-app:ui`).
-Then it passes messages typed in the page into the session as channel events, and gives Claude
-a `reply` tool for short progress notes. Claude's final answer of each turn reaches the page
+Then it passes messages typed in the page into the session as channel events, gives Claude
+a `reply` tool for short progress notes, and relays tool-approval prompts to the page (permission
+relay). Hard stops (deploying, publishing, force-pushing, spending...) can be denied from the
+page but only allowed in the terminal; this file enforces that, not just the page. Claude's final answer of each turn reaches the page
 through the Stop hook, so nothing is lost if Claude answers in the terminal only.
 
 Protocol: MCP over stdio, newline-delimited JSON-RPC, standard library only. Unknown requests
@@ -20,6 +22,7 @@ from __future__ import annotations
 import fcntl
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -27,7 +30,16 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from bma_events import append, clip_text, ui_dir, ui_enabled  # noqa: E402
+from bma_events import append, clip, clip_text, ui_dir, ui_enabled  # noqa: E402
+
+try:  # the bash guard's own patterns, so both agree on what ships something off the machine
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "hooks"))
+    from pre_bash_guard import DEPLOY  # noqa: E402
+except Exception:
+    DEPLOY = None  # fail closed: every Bash request counts as a hard stop
+FORCE_PUSH = r"\bgit\s+push\b.*(--force\b|\s-f\b|--force-with-lease\b)"
+HARD_TOOL = re.compile(r"deploy|publish|release|submit|purchase|checkout|payment|pay_|charge|transfer|"
+                       r"send_?(mail|email|message)|post_?(message|tweet)|credential|secret|password", re.I)
 
 POLL = 0.5
 HEARTBEAT = 5.0
@@ -71,6 +83,22 @@ def channel_enabled() -> bool:
 
 ACTIVE = is_bma_project()
 CHANNEL = ACTIVE and channel_enabled()
+PENDING: dict[str, dict] = {}   # open permission requests relayed to the page: request_id → {hard}
+
+
+def hard_stop(tool: str, description: str, preview: str) -> str | None:
+    """Why this request must be allowed in the terminal, or None if the page may allow it."""
+    if tool == "Bash":
+        if DEPLOY is None:
+            return "The hard-stop check is unavailable, so the terminal decides."
+        if re.search(DEPLOY, preview) or re.search(r"deploy|publish", description, re.I):
+            return "This deploys, publishes, or submits something (hard stop)."
+        if re.search(FORCE_PUSH, preview):
+            return "Force push rewrites shared history (hard stop)."
+        return None
+    if HARD_TOOL.search(tool):
+        return f"{tool} may spend money, publish, send, or handle secrets (hard stop)."
+    return None
 
 INSTRUCTIONS = (
     'Messages the user types in the build-my-app web page arrive as <channel source="..." chat_id="...">. '
@@ -109,8 +137,9 @@ def handle(msg: dict) -> None:
     if method == "initialize":
         write({"jsonrpc": "2.0", "id": mid, "result": {
             "protocolVersion": (msg.get("params") or {}).get("protocolVersion", "2025-06-18"),
-            "capabilities": {"experimental": {"claude/channel": {}}, "tools": {}},
-            "serverInfo": {"name": "bma", "version": "0.4.0"},
+            "capabilities": {"experimental": {"claude/channel": {}, "claude/channel/permission": {} if CHANNEL else False},
+                             "tools": {}},
+            "serverInfo": {"name": "bma", "version": "0.5.0"},
             "instructions": INSTRUCTIONS,
         }})
     elif method == "tools/list":
@@ -128,6 +157,20 @@ def handle(msg: dict) -> None:
             write({"jsonrpc": "2.0", "id": mid, "result": {"content": [{"type": "text", "text": result}]}})
         else:
             write({"jsonrpc": "2.0", "id": mid, "error": {"code": -32601, "message": "unknown tool"}})
+    elif method == "notifications/claude/channel/permission_request" and CHANNEL:
+        p = msg.get("params") or {}
+        rid = str(p.get("request_id") or "")
+        if not re.fullmatch(r"[a-km-z]{5}", rid):
+            return
+        tool, desc, preview = (str(p.get(k) or "") for k in ("tool_name", "description", "input_preview"))
+        reason = hard_stop(tool, desc, preview)
+        PENDING[rid] = {"hard": bool(reason), "ts": time.time()}
+        for old in [k for k, v in PENDING.items() if time.time() - v["ts"] > 3600]:
+            PENDING.pop(old, None)
+        if ui_enabled(ROOT):
+            append(ROOT, {"ev": "permission", "request_id": rid, "tool": tool, "desc": clip(desc, 300),
+                          "preview": clip_text(preview, 1500), "hard": bool(reason), "reason": reason,
+                          "bridge": os.getpid()})
     elif method == "ping":
         write({"jsonrpc": "2.0", "id": mid, "result": {}})
     elif mid is not None:
@@ -181,6 +224,37 @@ def deliver_new() -> None:
         append(ROOT, {"ev": "delivered", "chat_id": m.get("chat_id"), "bridge": os.getpid()})
 
 
+def verdicts_file() -> Path:
+    return ui_dir(ROOT) / "verdicts" / f"{os.getpid()}.jsonl"
+
+
+def apply_verdicts() -> None:
+    """Answers clicked in the page for this session's permission prompts."""
+    f = verdicts_file()
+    if not f.exists():
+        return
+    taking = f.with_suffix(".taking")
+    os.replace(f, taking)  # atomic hand-off: the server appends to a fresh file from now on
+    lines = taking.read_text().splitlines()
+    taking.unlink()
+    for line in lines:
+        try:
+            v = json.loads(line)
+        except ValueError:
+            continue
+        rid, behavior = str(v.get("request_id")), v.get("behavior")
+        req = PENDING.get(rid)
+        if not req or behavior not in ("allow", "deny"):
+            continue
+        if behavior == "allow" and req["hard"]:
+            append(ROOT, {"ev": "permission_refused", "request_id": rid})
+            continue
+        PENDING.pop(rid, None)
+        write({"jsonrpc": "2.0", "method": "notifications/claude/channel/permission",
+               "params": {"request_id": rid, "behavior": behavior}})
+        append(ROOT, {"ev": "permission_answer", "request_id": rid, "behavior": behavior, "via": "web"})
+
+
 def pump(stop: threading.Event) -> None:
     last_beat = 0.0
     while not stop.is_set():
@@ -191,6 +265,7 @@ def pump(stop: threading.Event) -> None:
                     last_beat = time.time()
                 if CHANNEL:
                     deliver_new()
+                    apply_verdicts()
         except Exception as e:  # keep the session's MCP connection alive no matter what
             print(f"bma_channel: {e!r}", file=sys.stderr, flush=True)
         stop.wait(POLL)
@@ -211,10 +286,11 @@ def main() -> None:
                 print(f"bma_channel: bad message {e!r}", file=sys.stderr, flush=True)
     finally:
         stop.set()
-        try:
-            bridge_file().unlink()
-        except Exception:
-            pass
+        for f in (bridge_file(), verdicts_file()):
+            try:
+                f.unlink()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

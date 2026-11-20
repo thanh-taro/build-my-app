@@ -128,3 +128,38 @@ print("page:", snap["bridge"], [(f["who"], f.get("status")) for f in snap["feed"
 br.stdin.close(); br.wait(5)
 PY
 python3 "$P/scripts/bma_ui.py" stop
+
+echo "== 9. approvals from the page (permission relay)"
+python3 "$P/scripts/bma_ui.py" start --port 7399 >/dev/null
+python3 - "$P" <<'PY'
+import json, os, subprocess, sys, threading, time, urllib.request, urllib.error
+P = sys.argv[1]
+i = json.load(open(".build-my-app/tmp/ui/ui.json")); base = f"http://127.0.0.1:{i['port']}"
+def post(body):
+    try:
+        return urllib.request.urlopen(urllib.request.Request(f"{base}/api/permission", data=json.dumps(body).encode(),
+                                      headers={"Content-Type": "application/json", "X-Token": i["token"]})).status
+    except urllib.error.HTTPError as e:
+        return e.code
+br = subprocess.Popen([sys.executable, f"{P}/scripts/bma_channel.py"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+                      env=dict(os.environ, BMA_CHANNEL="1"))
+out = []; threading.Thread(target=lambda: [out.append(json.loads(l)) for l in br.stdout], daemon=True).start()
+w = lambda m: (br.stdin.write(json.dumps(m) + "\n"), br.stdin.flush())
+w({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}); time.sleep(1)
+print("permission capability:", "claude/channel/permission" in out[0]["result"]["capabilities"]["experimental"])
+for rid, cmd in (("abcde", "ls -la"), ("fghij", "git push -f origin main")):
+    w({"jsonrpc": "2.0", "method": "notifications/claude/channel/permission_request",
+       "params": {"request_id": rid, "tool_name": "Bash", "description": cmd, "input_preview": json.dumps({"command": cmd})}})
+time.sleep(1.5)
+print("allow normal →", post({"request_id": "abcde", "behavior": "allow"}), "(expect 200)")
+print("allow hard stop →", post({"request_id": "fghij", "behavior": "allow"}), "(expect 409)")
+open(f".build-my-app/tmp/ui/verdicts/{br.pid}.jsonl", "a").write('{"request_id": "fghij", "behavior": "allow"}\n')
+time.sleep(1.2)
+print("deny hard stop →", post({"request_id": "fghij", "behavior": "deny"}), "(expect 200)")
+print("unknown id →", post({"request_id": "zzzzz", "behavior": "deny"}), "(expect 410)")
+time.sleep(1.2)
+print("verdicts sent (hard-stop allow written past the server must not appear):",
+      [(m["params"]["request_id"], m["params"]["behavior"]) for m in out if m.get("method") == "notifications/claude/channel/permission"])
+br.stdin.close(); br.wait(5)
+PY
+python3 "$P/scripts/bma_ui.py" stop

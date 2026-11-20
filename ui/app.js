@@ -27,6 +27,7 @@
     $('#feed').innerHTML = ''; seen.clear();
     (d.feed || []).forEach(addFeed);
     renderAgents(d, !gotSnapshot);
+    perms = d.perms || [];
     renderBridge(d.bridge);
     gotSnapshot = true;
     if (!(d.feed || []).length) emptyFeed();
@@ -35,6 +36,7 @@
   es.addEventListener('agents', (m) => renderAgents(JSON.parse(m.data), false));
   es.addEventListener('feed', (m) => addFeed(JSON.parse(m.data)));
   es.addEventListener('bridge', (m) => renderBridge(JSON.parse(m.data)));
+  es.addEventListener('perms', (m) => { perms = JSON.parse(m.data); renderTray(); });
   es.addEventListener('chat_status', (m) => { const d = JSON.parse(m.data); setChatStatus(d.chat_id, d.status); });
 
   // ---------- status ----------
@@ -89,6 +91,7 @@
       ...Object.entries(env).slice(0, 10).map(([k, v]) => [k, short(v)]),
     ]);
     room.setStatus(st);
+    renderTray();
   }
   function renderMachine() {
     const r = (lastState && lastState.resources) || {};
@@ -178,6 +181,7 @@
     input.placeholder = chatOn ? 'Message Claude. Enter sends, Shift+Enter adds a line.' : 'Chat is off. See the note below.';
     $('#send').disabled = !chatOn || !input.value.trim();
     note.hidden = chatOn;
+    renderTray();
     $('#chat-note-text').textContent = b.sessions
       ? 'Claude Code is running, but without chat. To chat from this page, restart it in this project with:'
       : 'No Claude Code session is connected. To chat from this page, start one in this project with:';
@@ -211,6 +215,88 @@
     catch (ex) { const r = document.createRange(); r.selectNodeContents($('#chat-cmd')); getSelection().removeAllRanges(); getSelection().addRange(r); btn.textContent = 'Selected'; }
     setTimeout(() => (btn.textContent = 'Copy'), 1500);
   });
+
+  // ---------- "needs you" tray ----------
+  let perms = [];
+  function button(text, cls, onClick) {
+    const b = el('button', cls, text);
+    b.type = 'button';
+    b.disabled = !chatOn;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+  function draft(text) {  // put an answer in the chat box for the user to check and send
+    input.value = text;
+    input.focus();
+    input.setSelectionRange(text.length, text.length);
+    $('#send').disabled = !chatOn || !input.value.trim();
+  }
+  async function answer(card, p, behavior) {
+    card.querySelectorAll('button').forEach((b) => (b.disabled = true));
+    const err = card.querySelector('.err');
+    try {
+      const r = await fetch('/api/permission', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Token': token },
+        body: JSON.stringify({ request_id: p.request_id, behavior }) });
+      if (!r.ok) throw new Error(await r.text() || `Failed (${r.status}).`);
+      card.querySelector('.hint').textContent = behavior === 'allow' ? 'Allowed. Sending…' : 'Denied. Sending…';
+    } catch (ex) {
+      err.textContent = ex.message; err.hidden = false;
+      card.querySelectorAll('button').forEach((b) => (b.disabled = !chatOn || (b.dataset.allow && p.hard)));
+    }
+  }
+  function previewText(raw) {  // show the command or the file, not the JSON around it
+    try {
+      const o = JSON.parse(raw);
+      if (o && typeof o.command === 'string') return '$ ' + o.command;
+      if (o && typeof o.file_path === 'string') {
+        const body = o.content || o.new_string || '';
+        return o.file_path + (body ? '\n\n' + String(body).slice(0, 600) : '');
+      }
+    } catch (ex) { /* not JSON (or clipped): show as is */ }
+    return raw;
+  }
+  function permCard(p) {
+    const c = el('div', 'card perm' + (p.hard ? ' hard' : ''));
+    c.append(el('div', 't', p.hard ? 'Hard stop · approval' : 'Approval'), el('div', 'q', `Claude wants to use ${p.tool}${p.desc ? ': ' + p.desc : ''}`));
+    if (p.preview) c.append(el('pre', null, previewText(p.preview)));
+    if (p.hard) c.append(el('div', 'why', `${p.reason || 'Hard stop.'} Allow it in the terminal; you can deny it here.`));
+    const acts = el('div', 'acts');
+    const allow = button('Allow once', 'primary', () => answer(c, p, 'allow'));
+    allow.dataset.allow = '1';
+    if (p.hard) allow.disabled = true;
+    acts.append(allow, button('Deny', null, () => answer(c, p, 'deny')));
+    const err = el('div', 'err'); err.hidden = true;
+    c.append(acts, el('div', 'hint', p.refused ? 'Refused: hard stops are allowed only in the terminal.' : 'The terminal shows the same prompt; the first answer counts.'), err);
+    return c;
+  }
+  function renderTray() {
+    const tray = $('#tray');
+    if (!tray) return;
+    tray.innerHTML = '';
+    perms.forEach((p) => tray.append(permCard(p)));
+    const st = lastState;
+    const gate = st && st.phases && st.phases.find((p) => p.id === st.current && p.status === 'gate');
+    if (gate) {
+      const c = el('div', 'card');
+      c.append(el('div', 't', 'Gate'), el('div', 'q', `${gate.title} is ready for your approval.`));
+      const acts = el('div', 'acts');
+      acts.append(button('Approve…', 'primary', () => draft(`I approve the ${gate.title} gate.`)),
+        button('Ask for changes…', null, () => draft(`Before I approve the ${gate.title} gate, please change: `)));
+      c.append(acts, el('div', 'hint', 'Puts your answer in the chat box to check and send.'));
+      tray.append(c);
+    }
+    ((st && st.decisions) || []).forEach((d) => {
+      const c = el('div', 'card');
+      c.append(el('div', 't', `Decision ${d.id}${d.kind ? ' · ' + d.kind : ''}`), el('div', 'q', d.question));
+      const acts = el('div', 'acts');
+      (d.options || []).forEach((o) => acts.append(button(o, o === d.recommendation ? 'rec' : null, () => draft(`${d.id}: I choose "${o}".`))));
+      if (!(d.options || []).length && d.recommendation) acts.append(button(`Go with: ${d.recommendation}`, 'rec', () => draft(`${d.id}: go with your recommendation (${d.recommendation}).`)));
+      acts.append(button('Other…', null, () => draft(`${d.id}: `)));
+      c.append(acts);
+      tray.append(c);
+    });
+    tray.hidden = !tray.childElementCount;
+  }
 
   function firstSentence(t) {
     const s = (t || '').replace(/[#*`_>]/g, '').trim();
