@@ -5,8 +5,10 @@ hook and event pipeline in a throwaway project, so you can watch the room withou
   bma_ui_demo.py [--open] [--once] [--speed 1.5] [--dir PATH]
 
 It creates a project in phase 4 (two features in progress, an open decision, a review loop),
-starts the UI server, and replays the story in a loop until Ctrl-C. Nothing touches your
-real projects or the machine-wide heavy-run slots. Standard library only.
+starts the UI server, and replays the story in a loop until Ctrl-C. It also plays a stand-in
+for the Claude Code session, so the page's interactive parts work: chat (canned replies), a
+tool approval and a hard stop, and a question from Claude. Nothing touches your real projects,
+your Claude Code sessions, or the machine-wide heavy-run slots. Standard library only.
 """
 from __future__ import annotations
 
@@ -18,6 +20,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -26,6 +29,7 @@ from bma_events import append  # noqa: E402
 
 PLUGIN = Path(__file__).resolve().parents[1]
 HOOK = PLUGIN / "hooks" / "ui_events.py"
+ASK_HOOK = PLUGIN / "hooks" / "ask_web.py"
 PFX = "build-my-app:"
 
 
@@ -58,12 +62,19 @@ def story(r: int) -> list[tuple]:
         *spawn(6, fb2, FB, "Implement F-004 Reminders"),
         tool(7.5, fb2, FB, "Read", {"file_path": "specs/20-features/F-004-reminders.md"}),
         tool(8.5, fb1, FB, "Write", {"file_path": "Tests/StreakPauseTests.swift"}),
+        (9, "ask", {"questions": [
+            {"question": "When should a paused streak resume?", "header": "Streak pause",
+             "options": [{"label": "On a date the user picks", "description": "Matches the F-003 spec draft"},
+                         {"label": "After a fixed 7 days", "description": "Simpler; one less screen"}], "multiSelect": False},
+            {"question": "Which reminder channels ship in the MVP?", "header": "Reminders",
+             "options": [{"label": "Push"}, {"label": "Email"}, {"label": "Widget"}], "multiSelect": True}]}),
         tool(10, fb2, FB, "Read", {"file_path": "App/Notifications/ReminderScheduler.swift"}),
         heavy(11, fb1, FB, "F-003"), (11.5, "heavy", ("heavy_run", "F-003", None)),
         tool(12.5, fb2, FB, "Write", {"file_path": "Tests/ReminderTests.swift"}),
         heavy(14, fb2, FB, "F-004"), (14.5, "heavy", ("heavy_wait", "F-004", None)),
         (17, "heavy", ("heavy_done", "F-003", 1)), (17.3, "heavy", ("heavy_run", "F-004", None)),
         tool(18, fb1, FB, "Edit", {"file_path": "App/Streak/StreakEngine.swift"}),
+        (19, "perm", ("Bash", "Install SwiftLint for the lint step", '{"command": "brew install swiftlint"}')),
         heavy(21, fb1, FB, "F-003"), (21.5, "heavy", ("heavy_wait", "F-003", None)),
         (23, "heavy", ("heavy_done", "F-004", 1)), (23.3, "heavy", ("heavy_run", "F-003", None)),
         tool(24, fb2, FB, "Edit", {"file_path": "App/Notifications/ReminderScheduler.swift"}),
@@ -78,6 +89,7 @@ def story(r: int) -> list[tuple]:
         heavy(37, ax, AX, "SCR-Today"), (37.5, "heavy", ("heavy_wait", "SCR-Today", None)),
         (40, "heavy", ("heavy_done", "F-004", 1)), (40.3, "heavy", ("heavy_run", "SCR-Today", None)),
         tool(41, cr, CR, "Grep", {"pattern": "pausedUntil"}),
+        (41.5, "perm", ("Bash", "Upload the build to TestFlight", '{"command": "fastlane pilot upload"}')),
         tool(42, fb2, FB, "Edit", {"file_path": "Tests/ReminderTests.swift"}),
         heavy(43, fb2, FB, "F-004"), (43.5, "heavy", ("heavy_wait", "F-004", None)),
         (45, "heavy", ("heavy_done", "SCR-Today", 0)), (45.3, "heavy", ("heavy_run", "F-004", None)),
@@ -123,7 +135,78 @@ def run_state(root: Path, *args: str) -> None:
                    env=dict(os.environ, CLAUDE_PROJECT_DIR=str(root)), capture_output=True, check=False)
 
 
-def play(root: Path, speed: float, r: int) -> None:
+class FakeSession:
+    """Stands in for the Claude Code session: runs the real chat bridge with channels on, answers
+    web messages with a canned reply, and raises approval prompts and a question."""
+
+    def __init__(self, root: Path) -> None:
+        self.root, self.env = root, dict(os.environ, CLAUDE_PROJECT_DIR=str(root))
+        self.bridge = subprocess.Popen([sys.executable, str(PLUGIN / "scripts" / "bma_channel.py")],
+                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
+                                       env=dict(self.env, BMA_CHANNEL="1"))
+        self.lock, self.n = threading.Lock(), 0
+        self._send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+        threading.Thread(target=self._listen, daemon=True).start()
+
+    def _send(self, msg: dict) -> None:
+        with self.lock:
+            try:
+                self.bridge.stdin.write(json.dumps(msg) + "\n")
+                self.bridge.stdin.flush()
+            except (BrokenPipeError, ValueError):
+                pass
+
+    def hook(self, payload: dict) -> None:
+        data = {"session_id": "demo", "cwd": str(self.root), **payload}
+        subprocess.run([sys.executable, str(HOOK)], input=json.dumps(data), text=True, env=self.env, check=False)
+
+    def _listen(self) -> None:
+        for line in self.bridge.stdout:
+            try:
+                m = json.loads(line)
+            except ValueError:
+                continue
+            if m.get("method") == "notifications/claude/channel":
+                text = m["params"]["content"]
+                threading.Thread(target=self._answer_chat, args=(text,), daemon=True).start()
+
+    def _answer_chat(self, text: str) -> None:
+        time.sleep(1.5)
+        self._send({"jsonrpc": "2.0", "id": 99, "method": "tools/call",
+                    "params": {"name": "reply", "arguments": {"text": "On it…"}}})
+        time.sleep(2)
+        self.hook({"hook_event_name": "Stop", "last_assistant_message":
+                   f"(Demo) I got your message: \"{text[:120]}\". In a real session, Claude answers here "
+                   "and does the work in the same conversation as the terminal."})
+
+    def permission(self, tool: str, desc: str, preview: str) -> None:
+        self.n += 1
+        rid = "".join("abcdefghijkmnopqrstuvwxyz"[(self.n * 7 + i * 3) % 25] for i in range(5))
+        self._send({"jsonrpc": "2.0", "method": "notifications/claude/channel/permission_request",
+                    "params": {"request_id": rid, "tool_name": tool, "description": desc, "input_preview": preview}})
+
+    def ask(self, tool_input: dict) -> None:
+        def run():
+            data = {"hook_event_name": "PreToolUse", "tool_name": "AskUserQuestion", "cwd": str(self.root),
+                    "tool_input": tool_input}
+            out = subprocess.run([sys.executable, str(ASK_HOOK)], input=json.dumps(data), text=True,
+                                 env=self.env, capture_output=True, check=False).stdout
+            if out.strip():
+                answers = json.loads(out)["hookSpecificOutput"]["updatedInput"]["answers"]
+                self.hook({"hook_event_name": "Stop", "last_assistant_message":
+                           "Thanks, noted: " + "; ".join(answers.values()) + ". (Demo: in a real session, "
+                           "Claude continues with your answer and no terminal dialog opens.)"})
+        threading.Thread(target=run, daemon=True).start()
+
+    def close(self) -> None:
+        try:
+            self.bridge.stdin.close()
+            self.bridge.wait(5)
+        except Exception:
+            self.bridge.kill()
+
+
+def play(root: Path, speed: float, r: int, session: FakeSession) -> None:
     env = dict(os.environ, CLAUDE_PROJECT_DIR=str(root))
     start = time.time()
     for t, kind, payload in sorted(story(r), key=lambda x: x[0]):
@@ -138,6 +221,10 @@ def play(root: Path, speed: float, r: int) -> None:
             append(root, {"ev": ev, "label": label, "pid": 0, **({"code": code} if code is not None else {})})
         elif kind == "state":
             run_state(root, *payload)
+        elif kind == "perm":
+            session.permission(*payload)
+        elif kind == "ask":
+            session.ask(payload)
 
 
 def main() -> int:
@@ -154,8 +241,11 @@ def main() -> int:
     setup(root)
     env = dict(os.environ, CLAUDE_PROJECT_DIR=str(root))
     ui = [sys.executable, str(PLUGIN / "scripts" / "bma_ui.py")]
+    session = FakeSession(root)  # first, so the page finds a chat session as soon as it opens
     subprocess.run(ui + ["start"] + (["--open"] if a.open else []), env=env, cwd=root, check=True)
-    print("Playing the demo story" + ("" if a.once else " in a loop") + ". Ctrl-C to stop.", flush=True)
+    print("Playing the demo story" + ("" if a.once else " in a loop") + ". Ctrl-C to stop.\n"
+          "Try the chat box, the approval cards, and the question card (it appears while the page is in view).",
+          flush=True)
 
     def finish(*_):
         raise KeyboardInterrupt
@@ -163,13 +253,14 @@ def main() -> int:
     try:
         r = 1
         while True:
-            play(root, a.speed, r)
+            play(root, a.speed, r, session)
             if a.once:
                 break
             r += 1
     except KeyboardInterrupt:
         pass
     finally:
+        session.close()
         subprocess.run(ui + ["stop"], env=env, cwd=root, check=False, capture_output=True)
         if temp:
             shutil.rmtree(root.parent, ignore_errors=True)

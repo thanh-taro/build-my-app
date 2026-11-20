@@ -1,4 +1,5 @@
-/* Layout: front desk (chat feed) | back office (3D room + roster) | status. Stacks on narrow screens. */
+/* Layout: agents and progress share the left sidebar; the 3D room fills the main area; the front desk
+   (conversation, chat box, and "needs you" cards) runs along the bottom. Stacks on narrow screens. */
 :root {
   --bg: #f3eeee;
   --surface: #ffffff;
@@ -12,6 +13,9 @@
   --warn: #c98a17;
   --bad: #d14b4b;
   --room: #f0dfe0;
+  --on-accent: #ffffff;
+  --bubble: #fff6f2;
+  --bubble-ink: #4a3440;
   --f-ui: ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
   --f-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color-scheme: light;
@@ -38,17 +42,25 @@ code { font: 12px var(--f-mono); background: var(--chip); padding: 1px 5px; bord
 .brand { display: flex; align-items: center; gap: 9px; font-size: 15px; }
 .mark { width: 18px; height: 18px; border-radius: 50% 50% 45% 45%; background: var(--accent); box-shadow: inset -3px -3px 0 rgba(0,0,0,.12); }
 .phase { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pal { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.pal select { font: inherit; font-size: 12px; padding: 3px 6px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.pal select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .conn { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
 .conn i { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
 .conn[data-state="live"] i { background: var(--ok); }
 .conn[data-state="down"] i { background: var(--bad); }
 
-.layout { display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr) minmax(240px, 290px);
+.layout { display: grid; grid-template-columns: minmax(260px, 310px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) clamp(220px, 34vh, 340px);
+  grid-template-areas: "side room" "side desk";
   gap: 16px; padding: 16px 18px; height: calc(100% - 49px); }
 .layout > section, .layout > aside { min-width: 0; min-height: 0; }
-
-.desk { display: flex; flex-direction: column; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
-.feed { list-style: none; margin: 0; padding: 0; flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.room { grid-area: room; }
+.side { grid-area: side; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+.desk { grid-area: desk; display: flex; gap: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+.talk { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.feed { list-style: none; margin: 0; padding: 0; flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
 .feed li { display: grid; gap: 2px; }
 .feed .who { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
 .feed .who b { color: var(--ink); font-weight: 600; }
@@ -59,7 +71,7 @@ code { font: 12px var(--f-mono); background: var(--chip); padding: 1px 5px; bord
 .feed .empty { color: var(--muted); }
 .chat { display: flex; gap: 8px; align-items: flex-end; }
 .chat textarea { flex: 1; resize: none; font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
-.chat button { font: inherit; padding: 8px 12px; border-radius: 10px; border: 0; background: var(--accent); color: #fff; cursor: pointer; }
+.chat button { font: inherit; padding: 8px 12px; border-radius: 10px; border: 0; background: var(--accent); color: var(--on-accent); cursor: pointer; }
 .chat button:disabled { opacity: .45; cursor: default; }
 .chat textarea:focus-visible, .chat button:focus-visible, .chat-note button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .chat-note { font-size: 12px; color: var(--muted); display: grid; gap: 6px; }
@@ -74,7 +86,8 @@ code { font: 12px var(--f-mono); background: var(--chip); padding: 1px 5px; bord
 .feed li.note .msg { font-style: italic; color: var(--muted); }
 
 /* "Needs you" tray: approval prompts, a phase gate, open decisions. */
-.tray { display: grid; gap: 8px; max-height: 62%; overflow-y: auto; flex: none; }
+.tray { flex: 0 0 min(400px, 42%); display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding-left: 14px; border-left: 1px solid var(--line); }
+.tray > .card { flex: none; }
 .card { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 10px; padding: 9px 11px; display: grid; gap: 6px; background: var(--bg); }
 .card.perm { border-left-color: var(--warn); }
 .card.hard { border-left-color: var(--bad); }
@@ -85,23 +98,34 @@ code { font: 12px var(--f-mono); background: var(--chip); padding: 1px 5px; bord
 .card .hint { font-size: 12px; color: var(--muted); }
 .card .acts { display: flex; flex-wrap: wrap; gap: 6px; }
 .card button { font: inherit; font-size: 13px; padding: 5px 11px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
-.card button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.card button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .card button.rec::after { content: " · recommended"; font-size: 11px; opacity: .8; }
 .card button:disabled { opacity: .45; cursor: default; }
 .card button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .card .err { font-size: 12px; color: var(--bad); }
+.card.ask { border-left-color: var(--ok); }
+.card fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 5px; }
+.card legend { font-weight: 600; padding: 0; margin-bottom: 4px; overflow-wrap: anywhere; }
+.card .chip { font-size: 11px; font-weight: 600; padding: 1px 7px; margin-right: 6px; border-radius: 99px; background: var(--chip); color: var(--muted); }
+.card .opt { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 6px; align-items: start; padding: 5px 7px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); cursor: pointer; }
+.card .opt:has(input:checked) { border-color: var(--accent); }
+.card .opt input { margin: 3px 0 0; accent-color: var(--accent); }
+.card .opt b { font-weight: 600; display: block; }
+.card .opt small { display: block; color: var(--muted); font-size: 12px; }
+.card .other { font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.card .other:focus-visible, .card .opt:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-.room { display: flex; flex-direction: column; gap: 10px; }
-.stage { position: relative; flex: 1 1 auto; min-height: 300px; border-radius: 14px; overflow: hidden; background: var(--room); touch-action: pan-y; user-select: none; }
+.room { display: flex; flex-direction: column; }
+.stage { position: relative; flex: 1 1 auto; min-height: 260px; border-radius: 14px; overflow: hidden; background: var(--room); touch-action: pan-y; user-select: none; }
 .stage canvas { display: block; width: 100%; height: 100%; cursor: grab; }
 .stage canvas:active { cursor: grabbing; }
 .layer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
-.no3d { position: absolute; inset: auto 16px 16px; margin: 0; padding: 10px 12px; border-radius: 10px; background: #fff6f2; color: #4a3440; }
+.no3d { position: absolute; inset: auto 16px 16px; margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--bubble); color: var(--bubble-ink); }
 
 /* Speech bubbles sit on the clay room, which keeps one look in both themes. */
 .bubble { position: absolute; left: 0; top: 0; max-width: 220px; width: max-content; font: 12px/1.35 var(--f-ui);
-  color: #4a3440; background: #fff6f2; border-radius: 14px; box-shadow: 0 6px 18px rgba(120,70,80,.18); padding: 5px 10px; will-change: transform; }
-.bubble::after { content: ""; position: absolute; left: 50%; bottom: -5px; width: 10px; height: 10px; margin-left: -5px; background: #fff6f2; transform: rotate(45deg); }
+  color: var(--bubble-ink); background: var(--bubble); border-radius: 14px; box-shadow: 0 6px 18px rgba(30,40,50,.16); padding: 5px 10px; will-change: transform; }
+.bubble::after { content: ""; position: absolute; left: 50%; bottom: -5px; width: 10px; height: 10px; margin-left: -5px; background: var(--bubble); transform: rotate(45deg); }
 .bubble .who { display: flex; gap: 6px; align-items: center; font-weight: 600; font-size: 11px; white-space: nowrap; }
 .bubble .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .bubble .say { display: none; margin-top: 2px; }
@@ -109,8 +133,8 @@ code { font: 12px var(--f-mono); background: var(--chip); padding: 1px 5px; bord
 .bubble.lead { max-width: 250px; font-size: 13px; }
 
 .roster-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.roster { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; max-height: 32%; overflow-y: auto; }
-.roster li { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.roster { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; max-height: 42vh; overflow-y: auto; }
+.roster li { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 7px 9px; }
 .roster .sw { width: 10px; height: 10px; border-radius: 4px; transform: translateY(1px); }
 .roster .name { font: 600 12px var(--f-mono); }
 .roster .now { grid-column: 2 / 4; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
@@ -121,7 +145,7 @@ code { font: 12px var(--f-mono); background: var(--chip); padding: 1px 5px; bord
 .pill.done { color: var(--ok); }
 .pill.stuck { color: #fff; background: var(--bad); }
 
-.status { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; overflow-y: auto; }
+.status { flex: none; }
 .rail { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 2px; }
 .rail li { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 8px; }
 .rail li .d { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line); }
@@ -141,16 +165,21 @@ code { font: 12px var(--f-mono); background: var(--chip); padding: 1px 5px; bord
 .pressure-critical { color: var(--bad); font-weight: 600; }
 
 @media (max-width: 1100px) {
-  .layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto auto; height: auto; }
-  .room { grid-column: 1 / -1; order: -1; }
+  .layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; grid-template-areas: "room" "desk" "side"; height: auto; }
   .stage { aspect-ratio: 16 / 9; flex: none; }
-  .desk { max-height: 520px; }
+  .desk { height: 460px; }
+  .side { overflow: visible; }
   .roster { max-height: none; }
 }
 @media (max-width: 700px) {
-  .layout { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+  .layout { padding: 12px; }
+  .desk { flex-direction: column; height: auto; }
+  .feed { max-height: 360px; }
+  .tray { flex: none; padding: 12px 0 0; border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
   .stage { aspect-ratio: 4 / 5; }
   .top { padding: 10px 12px; }
   .phase { display: none; }
+  .pal { margin-left: auto; }
+  .pal span { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }

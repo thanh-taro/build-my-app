@@ -9,6 +9,7 @@
     board: '#5b4a63', boardFg: '#fff3ef', boardDim: '#8e7a95', door: '#c99b8d', eye: '#3b2a33', dark: '#4a3a46',
     gold: '#f2c14e', white: '#fffaf7', rack: '#6e5c76', hat: '#ffd56b',
   };
+  Object.assign(P, ((window.BMA_PALETTES || {})[window.BMA_PALETTE] || {}).room);  // palettes.js
   const DESKS = [{ x: -2.4, z: -0.6 }, { x: 0.2, z: -0.6 }, { x: 2.8, z: -0.6 }, { x: -2.4, z: -2.8 }, { x: 0.2, z: -2.8 }, { x: 2.8, z: -2.8 }];
   const OVERFLOW = [{ x: -2.6, z: 1.0 }, { x: -1.8, z: 1.3 }, { x: 3.2, z: 1.0 }, { x: 3.9, z: 1.4 }, { x: -3.2, z: 1.5 }, { x: 4.4, z: 0.8 }];
   const SEATS = [1.3, 2.2, 3.1];

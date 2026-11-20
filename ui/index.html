@@ -5,62 +5,71 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>build-my-app</title>
 <link rel="stylesheet" href="/ui/app.css">
+<script src="/ui/palettes.js"></script>
 </head>
 <body>
 <header class="top">
   <div class="brand"><span class="mark" aria-hidden="true"></span><b id="project">build-my-app</b></div>
   <div class="phase" id="phase-line">Connecting…</div>
+  <label class="pal"><span>Colors</span><select id="palette"></select></label>
   <div class="conn" id="conn" data-state="connecting"><i></i><span>Connecting</span></div>
 </header>
 
 <main class="layout">
-  <section class="desk" aria-label="Front desk">
-    <h2>Front desk</h2>
-    <ol class="feed" id="feed" aria-live="polite"></ol>
-    <div class="tray" id="tray" aria-label="Needs you" aria-live="polite" hidden></div>
-    <form class="chat" id="chat">
-      <label for="chat-input" class="sr">Message to Claude</label>
-      <textarea id="chat-input" rows="2" maxlength="4000" disabled placeholder="Checking for a Claude Code session…"></textarea>
-      <button type="submit" id="send" disabled>Send</button>
-    </form>
-    <div class="chat-note" id="chat-note" hidden>
-      <p id="chat-note-text"></p>
-      <div class="cmd"><code id="chat-cmd">claude --dangerously-load-development-channels plugin:build-my-app@taro-tools</code><button type="button" id="copy-cmd">Copy</button></div>
-    </div>
-    <p class="chat-error" id="chat-error" role="alert" hidden></p>
-  </section>
-
   <section class="room" aria-label="Back office">
     <div class="stage" id="stage">
       <canvas id="scene" aria-hidden="true"></canvas>
       <div class="layer" id="layer"></div>
-      <p class="no3d" id="no3d" hidden>The 3D room can't load (offline, or WebGL is off). The list below shows the same agents.</p>
+      <p class="no3d" id="no3d" hidden>The 3D room can't load (offline, or WebGL is off). The Agents list shows the same agents.</p>
     </div>
-    <div class="roster-head">
-      <h2>Agents</h2>
-      <span id="heavy" class="muted"></span>
-    </div>
-    <ul class="roster" id="roster"></ul>
   </section>
 
-  <aside class="status" aria-label="Status">
-    <h2>Progress</h2>
-    <ol class="rail" id="rail"></ol>
-    <p class="step" id="step"></p>
-    <div id="decisions-box" hidden>
-      <h3>Waiting on you</h3>
-      <ul class="decisions" id="decisions"></ul>
-      <p class="muted small">Answer from the cards in the front desk, or in the terminal with <code>/build-my-app:decide</code>.</p>
-    </div>
-    <div id="loops-box" hidden>
-      <h3>Review loops</h3>
-      <ul class="kv" id="loops"></ul>
-    </div>
-    <h3>Machine</h3>
-    <ul class="kv" id="machine"></ul>
-    <h3>Environment</h3>
-    <ul class="kv" id="env"></ul>
+  <aside class="side">
+    <section class="panel agents" aria-label="Agents">
+      <div class="roster-head">
+        <h2>Agents</h2>
+        <span id="heavy" class="muted"></span>
+      </div>
+      <ul class="roster" id="roster"></ul>
+    </section>
+
+    <section class="panel status" aria-label="Status">
+      <h2>Progress</h2>
+      <ol class="rail" id="rail"></ol>
+      <p class="step" id="step"></p>
+      <div id="decisions-box" hidden>
+        <h3>Waiting on you</h3>
+        <ul class="decisions" id="decisions"></ul>
+        <p class="muted small">Answer from the cards in the front desk, or in the terminal with <code>/build-my-app:decide</code>.</p>
+      </div>
+      <div id="loops-box" hidden>
+        <h3>Review loops</h3>
+        <ul class="kv" id="loops"></ul>
+      </div>
+      <h3>Machine</h3>
+      <ul class="kv" id="machine"></ul>
+      <h3>Environment</h3>
+      <ul class="kv" id="env"></ul>
+    </section>
   </aside>
+
+  <section class="desk" aria-label="Front desk">
+    <div class="talk">
+      <h2>Front desk</h2>
+      <ol class="feed" id="feed" aria-live="polite"></ol>
+      <form class="chat" id="chat">
+        <label for="chat-input" class="sr">Message to Claude</label>
+        <textarea id="chat-input" rows="2" maxlength="4000" disabled placeholder="Checking for a Claude Code session…"></textarea>
+        <button type="submit" id="send" disabled>Send</button>
+      </form>
+      <div class="chat-note" id="chat-note" hidden>
+        <p id="chat-note-text"></p>
+        <div class="cmd"><code id="chat-cmd">claude --dangerously-load-development-channels plugin:build-my-app@taro-tools</code><button type="button" id="copy-cmd">Copy</button></div>
+      </div>
+      <p class="chat-error" id="chat-error" role="alert" hidden></p>
+    </div>
+    <div class="tray" id="tray" aria-label="Needs you" aria-live="polite" hidden></div>
+  </section>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"

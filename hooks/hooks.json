@@ -12,6 +12,8 @@
         "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_edit_guard.py\"" } ] },
       { "matcher": "Bash",
         "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_bash_guard.py\"" } ] },
+      { "matcher": "AskUserQuestion",
+        "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/ask_web.py\"", "timeout": 330 } ] },
       { "matcher": "*",
         "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/ui_events.py\"", "async": true } ] }
     ],

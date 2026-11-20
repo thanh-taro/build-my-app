@@ -28,6 +28,7 @@
     (d.feed || []).forEach(addFeed);
     renderAgents(d, !gotSnapshot);
     perms = d.perms || [];
+    questions = d.questions || [];
     renderBridge(d.bridge);
     gotSnapshot = true;
     if (!(d.feed || []).length) emptyFeed();
@@ -37,6 +38,7 @@
   es.addEventListener('feed', (m) => addFeed(JSON.parse(m.data)));
   es.addEventListener('bridge', (m) => renderBridge(JSON.parse(m.data)));
   es.addEventListener('perms', (m) => { perms = JSON.parse(m.data); renderTray(); });
+  es.addEventListener('questions', (m) => { questions = JSON.parse(m.data); renderTray(); });
   es.addEventListener('chat_status', (m) => { const d = JSON.parse(m.data); setChatStatus(d.chat_id, d.status); });
 
   // ---------- status ----------
@@ -216,8 +218,107 @@
     setTimeout(() => (btn.textContent = 'Copy'), 1500);
   });
 
+  // ---------- colors ----------
+  const pal = $('#palette');
+  Object.entries(window.BMA_PALETTES || {}).forEach(([k, v]) => {
+    const o = document.createElement('option'); o.value = k; o.textContent = v.label; pal.append(o);
+  });
+  pal.value = window.BMA_PALETTE;
+  pal.addEventListener('change', () => window.bmaSetPalette(pal.value));
+
+  // ---------- presence: lets Claude's questions come here while you're looking at the page ----------
+  function ping() {
+    fetch('/api/presence', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Token': token },
+      body: JSON.stringify({ visible: document.visibilityState === 'visible' }) }).catch(() => {});
+  }
+  document.addEventListener('visibilitychange', ping);
+  setInterval(ping, 15000);
+  ping();
+
   // ---------- "needs you" tray ----------
-  let perms = [];
+  let perms = [], questions = [], trayDirty = false;
+  $('#tray').addEventListener('focusout', () => setTimeout(() => { if (trayDirty && !$('#tray').contains(document.activeElement)) renderTray(); }, 0));
+  const drafts = {};  // qid → {question text → chosen labels / other text}, kept across re-renders
+  function questionCard(q) {
+    const c = el('form', 'card ask');
+    const state = drafts[q.qid] || (drafts[q.qid] = {});
+    c.append(el('div', 't', q.questions.length > 1 ? `Claude asks you ${q.questions.length} questions` : 'Claude asks'));
+    q.questions.forEach((x, qi) => {
+      const st = state[x.question] || (state[x.question] = { picked: [], other: '' });
+      const fs = el('fieldset');
+      const lg = el('legend');
+      if (x.header) lg.append(el('span', 'chip', x.header));
+      lg.append(document.createTextNode(x.question));
+      fs.append(lg);
+      const name = `${q.qid}-${qi}`;
+      (x.options || []).forEach((o) => {
+        const lab = el('label', 'opt');
+        const inp = document.createElement('input');
+        inp.type = x.multiSelect ? 'checkbox' : 'radio';
+        inp.name = name; inp.value = o.label;
+        inp.checked = st.picked.includes(o.label);
+        inp.addEventListener('change', () => {
+          st.picked = x.multiSelect ? [...fs.querySelectorAll('input:checked')].map((i) => i.value).filter((v) => v !== '__other')
+                                    : [o.label];
+          if (!x.multiSelect) { st.other = ''; const t = fs.querySelector('.other'); if (t) t.value = ''; }
+          sync();
+        });
+        const txt = el('span');
+        txt.append(el('b', null, o.label));
+        if (o.description) txt.append(el('small', null, o.description));
+        lab.append(inp, txt);
+        fs.append(lab);
+      });
+      const other = document.createElement('input');
+      other.type = 'text'; other.className = 'other'; other.placeholder = 'Other: type your own answer';
+      other.setAttribute('aria-label', `Other answer to: ${x.question}`);
+      other.value = st.other;
+      other.addEventListener('input', () => {
+        st.other = other.value;
+        if (!x.multiSelect && other.value.trim()) { st.picked = []; fs.querySelectorAll('input[type=radio]').forEach((i) => (i.checked = false)); }
+        sync();
+      });
+      fs.append(other);
+      c.append(fs);
+    });
+    const acts = el('div', 'acts');
+    const send = el('button', 'primary', 'Send answer'); send.type = 'submit';
+    const term = button('Answer in the terminal', null, () => submit({ terminal: true }));
+    term.disabled = false;
+    acts.append(send, term);
+    const err = el('div', 'err'); err.hidden = true;
+    c.append(acts, el('div', 'hint', 'Claude is waiting for this answer. The terminal shows the question only if you move it there.'), err);
+    function answers() {
+      const out = {};
+      for (const x of q.questions) {
+        const st = state[x.question];
+        const parts = [...st.picked, ...(st.other.trim() ? [st.other.trim()] : [])];
+        if (!parts.length) return null;
+        out[x.question] = parts.join(', ');
+      }
+      return out;
+    }
+    function sync() { send.disabled = !answers(); }
+    async function submit(body) {
+      c.querySelectorAll('button, input').forEach((b) => (b.disabled = true));
+      err.hidden = true;
+      try {
+        const r = await fetch('/api/answer', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Token': token },
+          body: JSON.stringify({ qid: q.qid, ...body }) });
+        if (!r.ok) throw new Error(await r.text() || `Failed (${r.status}).`);
+        delete drafts[q.qid];
+        questions = questions.filter((x) => x.qid !== q.qid);
+        renderTray();
+      } catch (ex) {
+        err.textContent = ex.message; err.hidden = false;
+        c.querySelectorAll('button, input').forEach((b) => (b.disabled = false));
+        sync();
+      }
+    }
+    c.addEventListener('submit', (e) => { e.preventDefault(); const a = answers(); if (a) submit({ answers: a }); });
+    sync();
+    return c;
+  }
   function button(text, cls, onClick) {
     const b = el('button', cls, text);
     b.type = 'button';
@@ -272,7 +373,10 @@
   function renderTray() {
     const tray = $('#tray');
     if (!tray) return;
+    if (tray.contains(document.activeElement) && document.activeElement.closest('.ask')) { trayDirty = true; return; }  // don't steal focus mid-answer
+    trayDirty = false;
     tray.innerHTML = '';
+    questions.forEach((q) => tray.append(questionCard(q)));
     perms.forEach((p) => tray.append(permCard(p)));
     const st = lastState;
     const gate = st && st.phases && st.phases.find((p) => p.id === st.current && p.status === 'gate');
