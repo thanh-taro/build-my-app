@@ -231,11 +231,15 @@ They appear as cards beside the chat, on the right of the front desk:
 - **Gates and decisions.** A phase waiting at its gate, and each open decision with its
   options (the recommended one marked), get buttons that put your answer in the chat box to
   check and send.
-- **Claude's questions.** When Claude asks a multiple-choice question while you have the page
-  open (and looked at it in the last minute), the question comes to the page instead of the
-  terminal: pick options, or type your own answer. *Answer in the terminal* moves it back, and
-  so does closing the page or waiting 5 minutes. This works without the channel flag. A hook
-  runs before the terminal dialog, so the question is in one place at a time, never both.
+- **Claude's questions.** When Claude asks a multiple-choice question while the page is on
+  screen (or was in the last minute), the question comes to the page instead of the terminal:
+  pick options, or type your own answer. *Answer in the terminal* moves it back, and so does
+  closing the page or waiting 5 minutes. Otherwise, for example while the terminal covers the
+  browser, the question opens in the terminal and the page shows it read-only with *Answer it
+  in the terminal*, until it is answered there. This works without the channel flag. A hook
+  runs before the terminal dialog, so a question can be answered in one place at a time.
+  `/build-my-app:ui` restarts a UI server left running from an older version of the plugin, so
+  the page and its server always match.
 
 The UI adds no load when it is off. Its hooks run in the background and do nothing unless the
 server is running. The chat bridge (`bma_channel.py`, an MCP server the plugin declares) starts
@@ -294,7 +298,7 @@ python3 scripts/bma_ui_demo.py --open        # loops until Ctrl-C; --once, --spe
 
 ## Status
 
-v0.8.0 — skeleton. Web UI (`/build-my-app:ui`) with a live agent room, chat, approvals, Claude's questions, app previews, and report hand-offs. Builds and tests stay within a
+v0.8.1 — skeleton. Web UI (`/build-my-app:ui`) with a live agent room, chat, approvals, Claude's questions, app previews, and report hand-offs. Builds and tests stay within a
 machine resource budget. Phases 0–1 and the core protocols are fully specified; phases 2–8 have
 complete step lists but are untested end to end. See `ROADMAP.md`.
 

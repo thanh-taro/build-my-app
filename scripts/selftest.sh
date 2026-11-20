@@ -184,19 +184,36 @@ snap = lambda: json.load(urllib.request.urlopen(f"{base}/api/snapshot?token={i['
 Q = json.dumps({"hook_event_name": "PreToolUse", "tool_name": "AskUserQuestion", "tool_input": {"questions": [
     {"question": "Which?", "header": "Pick", "options": [{"label": "A"}, {"label": "B"}], "multiSelect": False}]}})
 hook = lambda: subprocess.Popen([sys.executable, f"{P}/hooks/ask_web.py"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-h = hook(); out = h.communicate(Q, timeout=10)[0]
-print("page not open → stays in the terminal:", out == "")
+ev = lambda d: subprocess.run([sys.executable, f"{P}/hooks/ui_events.py"], input=json.dumps(d), text=True)
+open_q = lambda: [q for q in snap()["questions"] if q["state"] == "open"]
+term_q = lambda: [q for q in snap()["questions"] if q["state"] == "terminal"]
+Qt = json.dumps({**json.loads(Q), "tool_use_id": "tu-1"})
+h = hook(); out = h.communicate(Qt, timeout=10)[0]; time.sleep(1.2)
+print("page not on screen → stays in the terminal:", out == "", "| page shows it read-only:", [q["questions"][0]["question"] for q in term_q()])
+print("  answer from the page →", post("/api/answer", {"qid": term_q()[0]["qid"], "answers": {"Which?": "A"}}), "(expect 410)")
+ev({"hook_event_name": "PostToolUse", "tool_name": "AskUserQuestion", "tool_use_id": "tu-1", "tool_input": {}}); time.sleep(1.2)
+print("  answered in the terminal → card closes:", term_q() == [])
+h = hook(); h.communicate(Q, timeout=10); time.sleep(1.2)
+ev({"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {"file_path": "README.md"}}); time.sleep(1.2)
+print("  dismissed in the terminal, Claude moves on → card closes:", term_q() == [])
 post("/api/presence", {"visible": True})
 h = hook(); h.stdin.write(Q); h.stdin.close(); time.sleep(1.5)
-qid = snap()["questions"][0]["qid"]
+qid = open_q()[0]["qid"]
 print("incomplete answer →", post("/api/answer", {"qid": qid, "answers": {}}), "(expect 400)")
 print("answer →", post("/api/answer", {"qid": qid, "answers": {"Which?": "B"}}))
 o = json.loads(h.stdout.read())["hookSpecificOutput"]
 print("hook allows with answers:", o["permissionDecision"], o["updatedInput"]["answers"])
 h = hook(); h.stdin.write(Q); h.stdin.close(); time.sleep(1.5)
-qid = snap()["questions"][0]["qid"]
+qid = open_q()[0]["qid"]
 print("move to terminal →", post("/api/answer", {"qid": qid, "terminal": True}), "| hook output empty:", h.stdout.read() == "")
+time.sleep(1.2)
+print("  still shown, read-only:", [q["qid"] for q in term_q()] == [qid])
 print("answer after it moved →", post("/api/answer", {"qid": qid, "answers": {"Which?": "A"}}), "(expect 410)")
+if True:   # no page pings: the open live connection alone keeps "the page is open" fresh
+    with urllib.request.urlopen(f"{base}/events?token={i['token']}", timeout=15) as es:
+        es.readline(); time.sleep(11.5)
+        pr = json.load(open(".build-my-app/tmp/ui/presence.json"))
+print("server keeps presence fresh while a page is connected:", time.time() - pr["seen"] < 12)
 PY
 python3 "$P/scripts/bma_ui.py" stop
 

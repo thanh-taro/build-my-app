@@ -322,9 +322,16 @@
   pal.addEventListener('change', () => window.bmaSetPalette(pal.value));
 
   // ---------- presence: lets Claude's questions come here while you're looking at the page ----------
+  let outdatedShown = false;
   function ping() {
     fetch('/api/presence', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Token': token },
-      body: JSON.stringify({ visible: document.visibilityState === 'visible' }) }).catch(() => {});
+      body: JSON.stringify({ visible: document.visibilityState === 'visible' }) }).then((r) => {
+      if (r.status === 404 && !outdatedShown) {   // an older server that doesn't know this page
+        outdatedShown = true;
+        addFeed({ ts: Date.now() / 1000, who: 'system', text: 'This page\'s server is out of date, so Claude\'s questions '
+          + 'can\'t come here. Run /build-my-app:ui in Claude Code to restart it, then open the new link.' });
+      }
+    }).catch(() => {});
   }
   document.addEventListener('visibilitychange', ping);
   setInterval(ping, 15000);
@@ -334,7 +341,30 @@
   let perms = [], questions = [], trayDirty = false;
   $('#tray').addEventListener('focusout', () => setTimeout(() => { if (trayDirty && !$('#tray').contains(document.activeElement)) renderTray(); }, 0));
   const drafts = {};  // qid → {question text → chosen labels / other text}, kept across re-renders
+  function terminalQuestionCard(q) {   // waiting in the terminal: shown so the page never misses a question
+    const c = el('div', 'card ask terminal');
+    c.append(el('div', 't', q.questions.length > 1 ? `Claude asks ${q.questions.length} questions in the terminal` : 'Claude asks in the terminal'));
+    q.questions.forEach((x) => {
+      const fs = el('div', 'tq');
+      const lg = el('div', 'q');
+      if (x.header) lg.append(el('span', 'chip', x.header));
+      lg.append(document.createTextNode(x.question));
+      fs.append(lg);
+      const ul = el('ul', 'tq-opts');
+      (x.options || []).forEach((o) => {
+        const li = el('li');
+        li.append(el('b', null, o.label));
+        if (o.description) li.append(el('small', null, ' ' + o.description));
+        ul.append(li);
+      });
+      fs.append(ul);
+      c.append(fs);
+    });
+    c.append(el('div', 'hint', 'Answer it in the terminal. Questions come to this page instead when it is on screen as Claude asks.'));
+    return c;
+  }
   function questionCard(q) {
+    if (q.state === 'terminal') return terminalQuestionCard(q);
     const c = el('form', 'card ask');
     const state = drafts[q.qid] || (drafts[q.qid] = {});
     c.append(el('div', 't', q.questions.length > 1 ? `Claude asks you ${q.questions.length} questions` : 'Claude asks'));
