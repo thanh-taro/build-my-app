@@ -9,3 +9,8 @@
 - [ ] Cost estimate per phase shown before large fan-outs.
 - [x] Self-test script for `bma_state.py`, hooks, and the project template (`scripts/selftest.sh`).
 - [ ] Turn the self-test into assertions and run it in CI.
+- [x] Web UI v0.3: watch-only room, feed, and progress panel (`/build-my-app:ui`).
+- [ ] Web UI v0.4: chat from the page through a Claude Code channel (stdlib MCP server, `reply` tool,
+      transcript mirror as a fallback when Claude answers only in the terminal).
+- [ ] Web UI v0.5: answer decisions and approve gates and tool prompts from the page (permission relay);
+      hard stops stay terminal-confirmed.

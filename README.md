@@ -153,6 +153,39 @@ Phases 2 and 3 run in parallel after gate 1. Shared rules live in the `core` ski
 | `/build-my-app:spike <question>` | Time-boxed technical spike → ADR |
 | `/build-my-app:autonomy [level]` | guided · balanced · autopilot |
 | `/build-my-app:audit <kind> [scope]` | Re-run audits (spec, design, code, qa, license, a11y, security, perf) |
+| `/build-my-app:ui [stop\|status]` | Open the live web view of the agents, the conversation, and progress |
+
+## Web UI
+
+```
+/build-my-app:ui
+```
+
+Opens a local page (127.0.0.1 only, with a random access token in the link) that shows the
+run as a small 3D service center:
+
+- **Front desk:** the conversation. Your messages from the terminal, Claude's replies, and
+  short notes when it hands out work or an agent finishes.
+- **Back office:** each subagent appears as a clay figure when it starts. It walks in, works at
+  a desk and says what it is doing, waits on the bench while a heavy build or test run is
+  queued, shows a red mark after three failed heavy runs in a row, and leaves when it is done.
+  Each agent type has its own color and prop. A list under the room shows the same information.
+- **Progress:** phases and gates, open decisions, review loops, the machine budget and memory
+  pressure, and the environment recorded in setup.
+
+This version only watches: keep typing in the terminal. Chatting from the page comes next
+(via Claude Code channels). The UI adds no load when it is off. Its hooks run in the
+background and do nothing unless the server is running. The 3D view loads three.js from
+jsDelivr (pinned, with an integrity hash); offline, the page falls back to the list.
+`/build-my-app:ui stop` closes it.
+
+To see it without a real run, play the demo. It builds a throwaway project in phase 4 and replays a
+short story through the same hooks: two features built in parallel, the build queue, a code
+review, an accessibility audit, and a feature that gets stuck and rescued.
+
+```bash
+python3 scripts/bma_ui_demo.py --open        # loops until Ctrl-C; --once, --speed 2
+```
 
 ## Components
 
@@ -165,6 +198,8 @@ Phases 2 and 3 run in parallel after gate 1. Shared rules live in the `core` ski
 - **Hooks** (no-ops outside build-my-app projects): session orientation, spec-ID context
   injection, state/generated-file edit guard, destructive-command, deploy-before-phase-7, and
   unregistered-dependency guard, spec lint after spec edits, compaction log, pause notice on stop.
+- **Web UI**: `scripts/bma_ui.py` (local server), `hooks/ui_events.py` (event recorder),
+  `scripts/bma_events.py` (event log), `ui/` (the page and the 3D room).
 - **Scripts**: `scripts/bma_state.py` (workflow state machine, stored in
   `.build-my-app/state.json` in the project).
 - **Project template** (`templates/project/`): spec tree with templates and rules, spec lint
@@ -172,7 +207,8 @@ Phases 2 and 3 run in parallel after gate 1. Shared rules live in the `core` ski
 
 ## Status
 
-v0.2.1 — skeleton. Builds and tests now stay within a machine resource budget. Phases 0–1 and the core protocols are fully specified; phases 2–8 have
+v0.3.0 — skeleton. Adds a watch-only web UI (`/build-my-app:ui`). Builds and tests stay within a
+machine resource budget. Phases 0–1 and the core protocols are fully specified; phases 2–8 have
 complete step lists but are untested end to end. See `ROADMAP.md`.
 
 ## License

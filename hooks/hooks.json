@@ -4,23 +4,35 @@
       { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/session_start.py\"" } ] }
     ],
     "UserPromptSubmit": [
-      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/prompt_spec_ids.py\"" } ] }
+      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/prompt_spec_ids.py\"" } ] },
+      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/ui_events.py\"", "async": true } ] }
     ],
     "PreToolUse": [
       { "matcher": "Edit|Write|MultiEdit",
         "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_edit_guard.py\"" } ] },
       { "matcher": "Bash",
-        "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_bash_guard.py\"" } ] }
+        "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_bash_guard.py\"" } ] },
+      { "matcher": "*",
+        "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/ui_events.py\"", "async": true } ] }
     ],
     "PostToolUse": [
       { "matcher": "Edit|Write|MultiEdit",
-        "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/post_edit_lint.py\"" } ] }
+        "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/post_edit_lint.py\"" } ] },
+      { "matcher": "Agent|Task",
+        "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/ui_events.py\"", "async": true } ] }
+    ],
+    "SubagentStart": [
+      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/ui_events.py\"", "async": true } ] }
+    ],
+    "SubagentStop": [
+      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/ui_events.py\"", "async": true } ] }
     ],
     "PreCompact": [
       { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/pre_compact.py\"" } ] }
     ],
     "Stop": [
-      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/stop_check.py\"" } ] }
+      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/stop_check.py\"" } ] },
+      { "hooks": [ { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/ui_events.py\"", "async": true } ] }
     ]
   }
 }
