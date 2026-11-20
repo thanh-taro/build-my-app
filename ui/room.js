@@ -23,7 +23,8 @@
   let THREE, renderer, scene, camera, stage, canvas, layer, avatarRoot, refs = {};
   const figs = new Map();       // agent id → figure
   const deskUse = new Map();    // slot key → agent id
-  let lead = { text: 'Hi! I\'ll show who is working on what.', at: 0, fig: null, bubble: null };
+  let lead = { text: 'Hi! I\'ll show who is working on what.', at: now(), fig: null, bubble: null, pinned: false };
+  const LEAD_SAYS_FOR = 6;  // seconds the lead's bubble shows its text; then just the name, like the agents
   const orbit = { theta: 0.62, phi: 0.6, r: 17, target: null };
   let status = null, heavyRunning = 0;
 
@@ -456,6 +457,7 @@
     const lp = project(FRONT.x, 2.05, FRONT.z);
     place(lead.bubble, lp);
     const ls = lead.bubble.querySelector('.say'); if (ls.textContent !== lead.text) ls.textContent = lead.text;
+    lead.bubble.classList.toggle('open', lead.pinned || t - lead.at < LEAD_SAYS_FOR);
     if (hop > 0) moving = true;
 
     // Draw at 30 fps while something moves, 12 fps otherwise (spinning rings, blinking).
@@ -486,6 +488,7 @@
       if (window.BmaRoom.onPreview) window.BmaRoom.onPreview(preview);
       return;
     }
+    if (lead.fig && ray.intersectObject(lead.fig.g, true).length) { lead.pinned = !lead.pinned; return; }
     const hit = ray.intersectObjects(avatarRoot.children, true)[0];
     let o = hit && hit.object; while (o && !o.userData.aid) o = o.parent;
     const f = o && figs.get(o.userData.aid);
@@ -519,7 +522,7 @@
     lead.fig = buildAvatar('assistant');
     lead.fig.g.scale.setScalar(1.2);
     scene.add(lead.fig.g);
-    lead.bubble = bubbleFor(null, 'Assistant', true);
+    lead.bubble = bubbleFor(null, window.bmaCast('assistant').name, true);
     lead.bubble.querySelector('.dot').style.background = window.bmaCast('assistant').color;
     camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
     new ResizeObserver(fit).observe(stage);

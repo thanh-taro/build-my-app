@@ -2,7 +2,7 @@
 // Any agent type not listed (a new plugin agent, Explore, Plan, general-purpose...) still
 // appears, with the neutral look and its type as its name.
 window.BMA_CAST = {
-  assistant:            { color: '#f2b84b', prop: 'headset',   role: 'Front desk' },
+  assistant:            { color: '#f2b84b', prop: 'headset',   role: 'Leads the project', name: 'Project Lead' },
   'product-strategist': { color: '#e9a15b', prop: 'scarf',     role: 'Sharpens the idea' },
   'market-researcher':  { color: '#7fb6c9', prop: 'antenna',   role: 'Researches the market' },
   'spec-reviewer':      { color: '#a98bd6', prop: 'clipboard', role: 'Reviews specs' },

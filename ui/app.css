@@ -131,7 +131,7 @@ code { font: 12px var(--f-mono); background: var(--chip); padding: 1px 5px; bord
 .bubble .who { display: flex; gap: 6px; align-items: center; font-weight: 600; font-size: 11px; white-space: nowrap; }
 .bubble .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .bubble .say { display: none; margin-top: 2px; }
-.bubble.open .say, .bubble.lead .say { display: block; }
+.bubble.open .say { display: block; }
 .bubble.lead { max-width: 250px; font-size: 13px; }
 
 .roster-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
