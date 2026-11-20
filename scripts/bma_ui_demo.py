@@ -83,7 +83,7 @@ def story(r: int) -> list[tuple]:
         (23, "heavy", ("heavy_done", "F-004", 1)), (23.3, "heavy", ("heavy_run", "F-003", None)),
         tool(24, fb2, FB, "Edit", {"file_path": "App/Notifications/ReminderScheduler.swift"}),
         (27, "heavy", ("heavy_done", "F-003", 0)),
-        stop(28, fb1, FB, "F-003 is green: 14 tests pass and all 4 acceptance criteria are covered.\nDetails..."),
+        stop(28, fb1, FB, "F-003 is green: 14 tests pass and all 4 acceptance criteria are covered.\nDetails...\nStatus: pass"),
         (28.5, "preview", "Dev build after F-003"),
         *spawn(29.5, cr, CR, "Review the F-003 diff"),
         tool(31, cr, CR, "Bash", {"command": "git diff main...HEAD", "description": "Read the F-003 diff"}),
@@ -98,19 +98,20 @@ def story(r: int) -> list[tuple]:
         tool(42, fb2, FB, "Edit", {"file_path": "Tests/ReminderTests.swift"}),
         heavy(43, fb2, FB, "F-004"), (43.5, "heavy", ("heavy_wait", "F-004", None)),
         (45, "heavy", ("heavy_done", "SCR-Today", 0)), (45.3, "heavy", ("heavy_run", "F-004", None)),
-        stop(46, ax, AX, "SCR-Today passes contrast and Dynamic Type; I added 1 missing label."),
-        stop(48, cr, CR, "F-003 approved after 2 small fixes."),
+        # two agents finish together: they line up at the front desk and hand over one at a time
+        stop(46, ax, AX, "SCR-Today: the streak badge has no accessibility label; feature-builder should add one.\nStatus: fixes"),
+        stop(46.4, cr, CR, "F-003 approved: the diff matches the spec and the tests cover every acceptance criterion.\nStatus: pass"),
         (49, "state", ["loop", "end", "review-F-003", "--outcome", "approved"]),
         (50, "heavy", ("heavy_done", "F-004", 1)),
         main_tool(51, "Bash", {"command": "python3 bma_state.py log 'F-004 failed 3 times'"}),
         *spawn(52, sr, SR, "Find out why the F-004 tests keep failing"),
         tool(53.5, sr, SR, "Read", {"file_path": "Tests/ReminderTests.swift"}),
         tool(55, sr, SR, "Grep", {"pattern": "TimeZone.current"}),
-        stop(58, sr, SR, "The reminder test depends on the device time zone; inject a fixed clock."),
+        stop(58, sr, SR, "The reminder test depends on the device time zone; inject a fixed clock."),  # no status: plain folder
         tool(59, fb2, FB, "Edit", {"file_path": "App/Notifications/ReminderScheduler.swift"}),
         heavy(60.5, fb2, FB, "F-004"), (61, "heavy", ("heavy_run", "F-004", None)),
         (65, "heavy", ("heavy_done", "F-004", 0)),
-        stop(66, fb2, FB, "F-004 is green: 9 tests pass, with a fixed clock in the tests."),
+        stop(66, fb2, FB, "F-004 is green: 9 tests pass, with a fixed clock in the tests.\nStatus: pass"),
         (67, "state", ["step", "F-003 and F-004 done; next: F-005 Weekly summary"]),
         (68, "hook", {"hook_event_name": "Stop", "last_assistant_message":
                       "F-003 and F-004 are built and reviewed, and SCR-Today passes the accessibility audit. "

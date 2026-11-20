@@ -16,4 +16,5 @@
       hard stops stay terminal-confirmed.
 - [x] Web UI v0.6: answer Claude's multiple-choice questions (AskUserQuestion) in the page.
 - [x] Web UI v0.7: open the app from the page (previews: web/API URL, iOS Simulator, Android emulator).
+- [x] Web UI v0.8: agents hand their reports to the Project Lead at the front desk, with the outcome on the folder.
 - [ ] Previews on a phone (QR code; needs the dev server on the local network).

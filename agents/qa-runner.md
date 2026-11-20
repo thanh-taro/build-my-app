@@ -11,3 +11,6 @@ reuse one simulator/emulator/browser, and stop what you started when done.
 Run the full test suite and one end-to-end test per FLOW spec; capture screenshots of every
 designed state and compare with approved designs. For failures: minimal reproduction steps,
 expected (spec ID) vs. actual, evidence. Update `.build-my-app/reports/traceability.md`.
+
+End your report with one line for the lead: `Status: pass` (done; nothing left to fix), `Status: fixes`
+(findings or changes needed), or `Status: blocked` (could not finish; say what is needed).

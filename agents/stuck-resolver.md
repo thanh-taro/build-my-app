@@ -10,3 +10,6 @@ Input: goal, what was tried, exact errors/evidence. Do not repeat the failed app
 Output: the most likely root cause (with evidence), 2–3 different approaches ranked by
 likelihood and cost, whether a spike is warranted (question + success measure), and whether
 the spec itself may be the problem.
+
+End your report with one line for the lead: `Status: pass` (done; nothing left to fix), `Status: fixes`
+(findings or changes needed), or `Status: blocked` (could not finish; say what is needed).

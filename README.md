@@ -186,6 +186,12 @@ run as a small 3D service center. To chat from the page, start Claude Code with
 - **Back office:** each subagent appears as a clay figure when it starts. It walks in, works at
   a desk and says what it is doing, waits on the bench while a heavy build or test run is
   queued, shows a red mark after three failed heavy runs in a row, and leaves when it is done.
+  An agent that finishes with a report carries it to the front desk in a folder and hands it to
+  the Project Lead, who reads it out; agents that finish together line up. The folder's mark
+  shows the outcome (green check: pass, amber dot: needs fixes, red cross: blocked) and it stays
+  in the tray on the counter; click a folder to jump to that report in the chat. Agents end
+  their reports with a `Status: pass|fixes|blocked` line; without one, the outcome is guessed
+  from the report's words, or the folder stays plain.
   Each agent type has its own color and prop. The Project Lead stands at the front desk with a
   headset. A speech bubble shows what a figure just said for a few seconds, then shrinks to its
   name so it doesn't hide the room; click a figure to keep its bubble open.
@@ -259,7 +265,8 @@ To see it without a real run, play the demo. It builds a throwaway project in ph
 short story through the same hooks: two features built in parallel, the build queue, a code
 review, an accessibility audit, and a feature that gets stuck and rescued. It also stands in for
 the Claude Code session, so you can try the interactive parts: chat (canned replies), a tool
-approval and a hard stop, a question from Claude, and a preview of a mock app to open.
+approval and a hard stop, a question from Claude, a preview of a mock app to open, and two agents
+handing in their reports together.
 
 ```bash
 python3 scripts/bma_ui_demo.py --open        # loops until Ctrl-C; --once, --speed 2
@@ -287,7 +294,7 @@ python3 scripts/bma_ui_demo.py --open        # loops until Ctrl-C; --once, --spe
 
 ## Status
 
-v0.7.2 — skeleton. Web UI (`/build-my-app:ui`) with a live agent room, chat, approvals, Claude's questions, and app previews. Builds and tests stay within a
+v0.8.0 — skeleton. Web UI (`/build-my-app:ui`) with a live agent room, chat, approvals, Claude's questions, app previews, and report hand-offs. Builds and tests stay within a
 machine resource budget. Phases 0–1 and the core protocols are fully specified; phases 2–8 have
 complete step lists but are untested end to end. See `ROADMAP.md`.
 

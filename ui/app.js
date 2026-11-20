@@ -152,6 +152,10 @@
     who.append(el('b', null, { you: 'You', assistant: window.bmaCast('assistant').name, system: 'Note' }[kind] || item.who));
     if (item.via) who.append(el('span', 'badge', item.via === 'terminal' ? '⌨ terminal' : item.via === 'web' ? '🌐 web' : `✉ ${item.via}`));
     who.append(el('span', null, hhmm(item.ts)));
+    if (item.kind === 'done' && item.outcome) {
+      who.append(el('span', 'badge outcome ' + item.outcome, { pass: '✓ pass', fixes: '● needs fixes', blocked: '✕ blocked' }[item.outcome]));
+    }
+    if (item.kind === 'done' && item.agent) li.dataset.report = item.agent;
     li.append(who, el('div', 'msg', item.text));
     if (item.chat_id) {
       li.dataset.chat = item.chat_id;
@@ -254,6 +258,12 @@
     return `Please restart the preview "${p.label}"` + (p.cmd ? ` (it was started with \`${p.cmd}\`)` : '') + ' and record it again.';
   }
   if (has3d) window.BmaRoom.onPreview = (p) => openPreview(p);
+  if (has3d) window.BmaRoom.onReport = (aid) => {   // a folder in the room's tray was clicked: show that report
+    const li = [...document.querySelectorAll('#feed li[data-report]')].find((x) => x.dataset.report === aid);
+    if (!li) return;
+    li.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    li.classList.remove('flash'); void li.offsetWidth; li.classList.add('flash');
+  };
   function renderPreviews(list) {
     previews = list || [];
     const box = $('#preview-box'), ul = $('#previews');

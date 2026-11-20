@@ -11,3 +11,6 @@ Build only what answers the question; instrument it; measure; stop at the time b
 Report: result vs. success measure (numbers), evidence (commands, logs, screenshots), what
 surprised you, recommendation (adopt / adapt / reject) and what it implies for specs or
 architecture. Never touch the main branch.
+
+End your report with one line for the lead: `Status: pass` (done; nothing left to fix), `Status: fixes`
+(findings or changes needed), or `Status: blocked` (could not finish; say what is needed).

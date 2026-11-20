@@ -24,3 +24,6 @@ the same machine, so stay within the resource budget:
 5. If the spec is ambiguous or wrong: stop and report the gap with a proposed spec change —
    do not invent behavior.
 Report: requirements implemented, ACs covered (with test names), screenshots, open issues.
+
+End your report with one line for the lead: `Status: pass` (done; nothing left to fix), `Status: fixes`
+(findings or changes needed), or `Status: blocked` (could not finish; say what is needed).

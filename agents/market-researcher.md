@@ -12,3 +12,6 @@ Research the market for the given idea. Output (≤ 600 words, every claim cited
 - Gaps and underserved segments.
 - Licensing/regulatory constraints typical for this category.
 Say when information is thin or possibly outdated. Never invent numbers.
+
+End your report with one line for the lead: `Status: pass` (done; nothing left to fix), `Status: fixes`
+(findings or changes needed), or `Status: blocked` (could not finish; say what is needed).

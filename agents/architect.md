@@ -11,3 +11,6 @@ why; modules (responsibility, boundaries, public surface, which features each im
 data flow; the riskiest parts and spikes to de-risk them; ADR drafts using
 `specs/_templates/adr.md`. Prefer boring, well-supported technology; respect the dependency
 and licensing policy; state assumptions. Do not write application code.
+
+End your report with one line for the lead: `Status: pass` (done; nothing left to fix), `Status: fixes`
+(findings or changes needed), or `Status: blocked` (could not finish; say what is needed).

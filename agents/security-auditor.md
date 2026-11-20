@@ -11,3 +11,6 @@ permission requests vs. actual need; input validation and injection; logging of 
 data; third-party SDKs and what they collect; consistency with the privacy principles in the
 specs. Each finding: location, exploit/impact scenario, fix. List data collected for store
 privacy declarations.
+
+End your report with one line for the lead: `Status: pass` (done; nothing left to fix), `Status: fixes`
+(findings or changes needed), or `Status: blocked` (could not finish; say what is needed).

@@ -14,10 +14,40 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from _common import is_bma_project, project_dir, read_input  # noqa: E402
-from bma_events import append, clip, clip_text, first_line, lower_first, ui_dir, ui_enabled  # noqa: E402
+from bma_events import append, clip, clip_text, lower_first, ui_dir, ui_enabled  # noqa: E402
 
 AGENT_TOOLS = ("Agent", "Task")
 LABEL_RE = re.compile(r"bma_heavy\.py\b.*?--label[ =]([^\s'\"]+)")
+# An agent's report outcome: its "Status: pass|fixes|blocked" line, else a guess from its words.
+STATUS_RE = re.compile(r"^[\s>*_`-]*status[*_`]*\s*:\s*[*_`]*\s*(pass|fixes|blocked)\b", re.I | re.M)
+NEGATED_RE = re.compile(r"\b(?:0|no|zero|none|without)\s+(?:\w+\s+){0,2}?(?:failed|failing|failures?|issues?|findings?|"
+                        r"blockers?|blocking|bugs?|problems?|errors?)\b", re.I)
+BLOCKED_RE = re.compile(r"\b(blocked|cannot proceed|can't proceed|could not|couldn't|unable to|gave up|"
+                        r"still fail(?:s|ing)?|failed|failing)\b", re.I)
+FIXES_RE = re.compile(r"\b(findings?|issues? found|found \d+ (?:issues?|problems?|bugs?)|needs? (?:\d+ )?(?:\w+ )?(?:fix(?:es|ing)?|changes)|"
+                      r"changes requested|request(?:ed|ing)? changes|must fix|should fix|bugs? found|violations?)\b", re.I)
+PASS_RE = re.compile(r"\b(green|pass(?:es|ed)?|approved?|lgtm|looks good|all (?:tests|checks) pass|done|completed?)\b", re.I)
+
+
+def outcome(text: str) -> str | None:
+    """pass, fixes, blocked, or None when it can't be told."""
+    m = STATUS_RE.search(text)
+    if m:
+        return m.group(1).lower()
+    words = NEGATED_RE.sub(" ", text[:3000])
+    for name, rx in (("blocked", BLOCKED_RE), ("fixes", FIXES_RE), ("pass", PASS_RE)):
+        if rx.search(words):
+            return name
+    return None
+
+
+def summary(text: str) -> str:
+    """The report's first line, skipping headings and the status line."""
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    body = [ln for ln in lines if not ln.startswith("#") and not STATUS_RE.match(ln)]
+    return body[0] if body else (lines[0].lstrip("#").strip() if lines else "")
+
+
 CHANNEL_RE = re.compile(r'^\s*<channel source="([^"]*)"[^>]*>\s*(.*?)\s*</channel>\s*$', re.S)
 OWN_CHANNEL = "plugin:build-my-app:"
 
@@ -82,7 +112,9 @@ def build(data: dict, root: Path) -> dict | None:
     if ev == "SubagentStart":
         return {**base, "ev": "agent_start"}
     if ev == "SubagentStop":
-        return {**base, "ev": "agent_stop", "text": clip(first_line(data.get("last_assistant_message")), 200)}
+        report = str(data.get("last_assistant_message") or "")
+        return {**base, "ev": "agent_stop", "text": clip(summary(report), 200),
+                "outcome": outcome(report) if report.strip() else None, "reported": bool(report.strip())}
     if ev == "PreToolUse":
         tool = data.get("tool_name") or ""
         ti = data.get("tool_input") or {}

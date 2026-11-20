@@ -15,3 +15,6 @@ deployment runbook (targets, migrations, deploy commands, smoke checks, monitori
 Phase 7 (deploy): turn the runbook into an ordered checklist for staging, then production,
 and check each step's result. Mark every account, billing, domain, secret, signing, upload,
 and submission step as user-owned with precise instructions. Never perform them yourself.
+
+End your report with one line for the lead: `Status: pass` (done; nothing left to fix), `Status: fixes`
+(findings or changes needed), or `Status: blocked` (could not finish; say what is needed).

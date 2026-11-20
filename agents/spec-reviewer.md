@@ -20,3 +20,6 @@ You review specs; you never edit. `specs/README.md` defines the rules.
 Only report what would cause a wrong design, wrong implementation, or untestable criterion.
 Output: verdict per item (ready / ready after minor fixes / not ready), then findings by
 severity, each with file:line, problem, and concrete suggested wording.
+
+End your report with one line for the lead: `Status: pass` (done; nothing left to fix), `Status: fixes`
+(findings or changes needed), or `Status: blocked` (could not finish; say what is needed).
