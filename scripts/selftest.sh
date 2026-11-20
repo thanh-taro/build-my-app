@@ -199,3 +199,48 @@ print("move to terminal →", post("/api/answer", {"qid": qid, "terminal": True}
 print("answer after it moved →", post("/api/answer", {"qid": qid, "answers": {"Which?": "A"}}), "(expect 410)")
 PY
 python3 "$P/scripts/bma_ui.py" stop
+
+echo "== 11. previews: open the app from the page"
+python3 "$P/scripts/bma_ui.py" start --port 7399 >/dev/null
+python3 - "$P" <<'PY'
+import base64, json, os, socket, subprocess, sys, time, urllib.request, urllib.error
+P = sys.argv[1]
+i = json.load(open(".build-my-app/tmp/ui/ui.json")); base = f"http://127.0.0.1:{i['port']}"
+pv = lambda *a: subprocess.run([sys.executable, f"{P}/scripts/bma_preview.py", *a], capture_output=True, text=True)
+def post(body):
+    try:
+        r = urllib.request.urlopen(urllib.request.Request(f"{base}/api/preview", data=json.dumps(body).encode(),
+                                   headers={"Content-Type": "application/json", "X-Token": i["token"]}))
+        return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode()[:60]
+def get(path):
+    try:
+        return urllib.request.urlopen(base + path).status
+    except urllib.error.HTTPError as e:
+        return e.code
+snap = lambda: json.load(urllib.request.urlopen(f"{base}/api/snapshot?token={i['token']}"))
+for kind, target in (("web", "https://example.com"), ("web", "file:///etc/passwd"), ("ios", "x; rm -rf ~"), ("android", "com.example.app && reboot")):
+    r = pv("add", "--kind", kind, "--target", target)
+    print(f"reject {kind} {target!r}:", r.returncode != 0)
+s = socket.socket(); s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]; s.close()
+srv = subprocess.Popen([sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+time.sleep(1)
+png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+open("shot.png", "wb").write(png)
+r = pv("add", "--kind", "web", "--target", f"http://localhost:{port}/", "--label", "Dev build", "--cmd", "python3 -m http.server", "--pid", str(srv.pid), "--screenshot", "shot.png")
+print("add web preview:", r.stdout.strip())
+time.sleep(1.5)
+p = snap()["previews"][0]
+print("page sees it:", p["label"], p["state"], "| screenshot:", bool(p["shot"]))
+print("feed note:", [f["text"][:40] for f in snap()["feed"] if f.get("kind") == "preview"])
+print("open (web) →", post({"id": p["id"], "action": "open"}))
+print("screenshot →", get(f"/api/preview-shot?token={i['token']}&id={p['id']}"), "| without token →", get(f"/api/preview-shot?id={p['id']}"),
+      "| unknown id →", get(f"/api/preview-shot?token={i['token']}&id=../../state"))
+print("bad action →", post({"id": p["id"], "action": "rm"})[0], "| unknown preview →", post({"id": "nope", "action": "open"})[0])
+PY
+python3 "$P/scripts/bma_ui.py" stop
+sleep 1
+python3 "$P/scripts/bma_preview.py" list
+python3 "$P/scripts/bma_preview.py" remove --all
+rm -f shot.png

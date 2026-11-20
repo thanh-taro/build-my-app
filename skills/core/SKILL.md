@@ -25,6 +25,8 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bma_state.py <command>
    `${CLAUDE_SKILL_DIR}/protocols/resources.md`: heavy commands go through
    `scripts/bma_heavy.py`, test workers are capped, and parallelism never exceeds
    `bma_state.py resources`.
+6b. **Let the user try it.** Whenever the app runs locally in a state worth trying, record a
+   preview per `${CLAUDE_SKILL_DIR}/protocols/preview.md` so the web UI can open it.
 7. **Local first, then release, then deploy.** Phases 0–5 develop and verify on the local
    machine only: local services, local data, fakes for paid/third-party services. Phase 6
    (release) packages and verifies a versioned candidate locally. Only phase 7 (deploy)

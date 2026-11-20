@@ -7,7 +7,8 @@ hook and event pipeline in a throwaway project, so you can watch the room withou
 It creates a project in phase 4 (two features in progress, an open decision, a review loop),
 starts the UI server, and replays the story in a loop until Ctrl-C. It also plays a stand-in
 for the Claude Code session, so the page's interactive parts work: chat (canned replies), a
-tool approval and a hard stop, and a question from Claude. Nothing touches your real projects,
+tool approval and a hard stop, a question from Claude, and a preview of the app to open. Nothing
+touches your real projects,
 your Claude Code sessions, or the machine-wide heavy-run slots. Standard library only.
 """
 from __future__ import annotations
@@ -17,11 +18,14 @@ import json
 import os
 import shutil
 import signal
+import socket
+import struct
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -80,6 +84,7 @@ def story(r: int) -> list[tuple]:
         tool(24, fb2, FB, "Edit", {"file_path": "App/Notifications/ReminderScheduler.swift"}),
         (27, "heavy", ("heavy_done", "F-003", 0)),
         stop(28, fb1, FB, "F-003 is green: 14 tests pass and all 4 acceptance criteria are covered.\nDetails..."),
+        (28.5, "preview", "Dev build after F-003"),
         *spawn(29.5, cr, CR, "Review the F-003 diff"),
         tool(31, cr, CR, "Bash", {"command": "git diff main...HEAD", "description": "Read the F-003 diff"}),
         *spawn(32, ax, AX, "Audit SCR-Today"),
@@ -133,6 +138,46 @@ def setup(root: Path) -> None:
 def run_state(root: Path, *args: str) -> None:
     subprocess.run([sys.executable, str(PLUGIN / "scripts" / "bma_state.py"), *args], cwd=root,
                    env=dict(os.environ, CLAUDE_PROJECT_DIR=str(root)), capture_output=True, check=False)
+
+
+MOCK_APP = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Habit Streaks (demo)</title>
+<style>body{margin:0;font:16px/1.4 -apple-system,system-ui,sans-serif;background:#eef4f2;color:#1f2b2b}
+header{background:#2f8f82;color:#fff;padding:18px 20px;font-weight:700;font-size:20px}
+main{max-width:420px;margin:0 auto;padding:16px;display:grid;gap:12px}
+.card{background:#fff;border-radius:14px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center}
+.n{font-size:22px;font-weight:700;color:#2f8f82}.p{font-size:13px;color:#5a6b6b}
+button{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:#2f8f82;color:#fff}
+.note{font-size:13px;color:#5a6b6b;text-align:center}</style></head><body>
+<header>Habit Streaks</header><main>
+<div class="card"><div>Morning run<div class="p">Paused until Monday</div></div><div class="n">12 🔥</div></div>
+<div class="card"><div>Read 20 pages<div class="p">Done today</div></div><div class="n">31 🔥</div></div>
+<div class="card"><div>No sugar<div class="p">Not yet today</div></div><button>Check in</button></div>
+<p class="note">Demo preview served by bma_ui_demo.py. In a real run, this is your app.</p>
+</main></body></html>"""
+
+
+def mock_png(path: Path) -> None:
+    """A tiny stand-in screenshot of the mock app (header bar and three cards), no imaging library."""
+    w, h = 360, 400
+    bg, head, card, accent = (238, 244, 242), (47, 143, 130), (255, 255, 255), (47, 143, 130)
+    rows = []
+    for y in range(h):
+        row = bytearray([0])
+        for x in range(w):
+            c = bg
+            if y < 56:
+                c = head
+            else:
+                for top in (76, 176, 276):
+                    if top <= y < top + 84 and 16 <= x < w - 16:
+                        c = accent if (w - 80 <= x < w - 36 and top + 30 <= y < top + 54) else card
+            row += bytes(c)
+        rows.append(bytes(row))
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+    path.write_bytes(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
+                     + chunk(b"IDAT", zlib.compress(b"".join(rows), 6)) + chunk(b"IEND", b""))
 
 
 class FakeSession:
@@ -198,7 +243,25 @@ class FakeSession:
                            "Claude continues with your answer and no terminal dialog opens.)"})
         threading.Thread(target=run, daemon=True).start()
 
+    def preview(self, label: str) -> None:
+        """Serve the mock app and record it as a preview, as Claude does after verifying a feature."""
+        if not getattr(self, "app", None) or self.app.poll() is not None:
+            site = self.root / "demo-app"
+            site.mkdir(exist_ok=True)
+            (site / "index.html").write_text(MOCK_APP)
+            mock_png(site / "shot.png")
+            s = socket.socket(); s.bind(("127.0.0.1", 0)); self.port = s.getsockname()[1]; s.close()
+            self.app = subprocess.Popen([sys.executable, "-m", "http.server", str(self.port), "--bind", "127.0.0.1",
+                                         "--directory", str(site)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(0.8)
+        subprocess.run([sys.executable, str(PLUGIN / "scripts" / "bma_preview.py"), "add", "--kind", "web",
+                        "--target", f"http://localhost:{self.port}/", "--label", label, "--cmd", "python3 -m http.server",
+                        "--pid", str(self.app.pid), "--screenshot", str(self.root / "demo-app" / "shot.png")],
+                       env=self.env, capture_output=True, check=False)
+
     def close(self) -> None:
+        if getattr(self, "app", None):
+            self.app.terminate()
         try:
             self.bridge.stdin.close()
             self.bridge.wait(5)
@@ -225,6 +288,8 @@ def play(root: Path, speed: float, r: int, session: FakeSession) -> None:
             session.permission(*payload)
         elif kind == "ask":
             session.ask(payload)
+        elif kind == "preview":
+            session.preview(payload)
 
 
 def main() -> int:

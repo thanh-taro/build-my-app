@@ -7,7 +7,7 @@
   const token = new URLSearchParams(location.search).get('token');
   const has3d = window.BmaRoom && window.BmaRoom.init($('#stage'), $('#scene'), $('#layer'));
   if (!has3d) { $('#no3d').hidden = false; $('#scene').hidden = true; }
-  const room = has3d ? window.BmaRoom : { setAgents() {}, setLead() {}, setStatus() {}, setHeavy() {} };
+  const room = has3d ? window.BmaRoom : { setAgents() {}, setLead() {}, setStatus() {}, setHeavy() {}, setPreview() {} };
 
   let lastHeavy = { running: 0, waiting: 0 }, lastState = null, gotSnapshot = false;
 
@@ -29,6 +29,7 @@
     renderAgents(d, !gotSnapshot);
     perms = d.perms || [];
     questions = d.questions || [];
+    renderPreviews(d.previews || []);
     renderBridge(d.bridge);
     gotSnapshot = true;
     if (!(d.feed || []).length) emptyFeed();
@@ -39,6 +40,7 @@
   es.addEventListener('bridge', (m) => renderBridge(JSON.parse(m.data)));
   es.addEventListener('perms', (m) => { perms = JSON.parse(m.data); renderTray(); });
   es.addEventListener('questions', (m) => { questions = JSON.parse(m.data); renderTray(); });
+  es.addEventListener('previews', (m) => renderPreviews(JSON.parse(m.data)));
   es.addEventListener('chat_status', (m) => { const d = JSON.parse(m.data); setChatStatus(d.chat_id, d.status); });
 
   // ---------- status ----------
@@ -189,7 +191,11 @@
       : 'No Claude Code session has checked in. If one is running here, run /mcp in it and check that the "bma" server is connected; otherwise start one in this project with:';
   }
   const input = $('#chat-input');
-  input.addEventListener('input', () => { $('#send').disabled = !chatOn || !input.value.trim(); });
+  function grow() {  // fit the box to its text, from one line up to the CSS max-height
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight + 2, 148) + 'px';
+  }
+  input.addEventListener('input', () => { grow(); $('#send').disabled = !chatOn || !input.value.trim(); });
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('#chat').requestSubmit(); }
   });
@@ -204,6 +210,7 @@
         body: JSON.stringify({ text }) });
       if (!r.ok) throw new Error(await r.text() || `Sending failed (${r.status}).`);
       input.value = '';
+      grow();
     } catch (ex) {
       err.textContent = ex.message; err.hidden = false;
     } finally {
@@ -217,6 +224,84 @@
     catch (ex) { const r = document.createRange(); r.selectNodeContents($('#chat-cmd')); getSelection().removeAllRanges(); getSelection().addRange(r); btn.textContent = 'Selected'; }
     setTimeout(() => (btn.textContent = 'Copy'), 1500);
   });
+
+  // ---------- preview: try the app ----------
+  let previews = [];
+  const PV_KIND = { web: 'Web', api: 'API', ios: 'iOS Simulator', android: 'Android emulator' };
+  const PV_STATE = { running: 'ready', stopped: 'stopped', 'simulator off': 'simulator off', 'emulator off': 'emulator off',
+    'not installed': 'not installed', 'no Xcode tools': 'no Xcode', 'no Android tools': 'no adb' };
+  const localUrl = (u) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/.test(u || '');
+  async function openPreview(p) {
+    const err = $('#pv-error'); err.hidden = true;
+    if (p.kind === 'web' || p.kind === 'api') {
+      if (localUrl(p.target)) window.open(p.target, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    try {
+      const r = await fetch('/api/preview', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Token': token },
+        body: JSON.stringify({ id: p.id, action: 'open' }) });
+      if (!r.ok) throw new Error(await r.text() || `Couldn't open it (${r.status}).`);
+    } catch (ex) { err.textContent = ex.message; err.hidden = false; }
+  }
+  async function refreshShot(p, btn) {
+    btn.disabled = true;
+    try {
+      await fetch('/api/preview', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Token': token },
+        body: JSON.stringify({ id: p.id, action: 'shot' }) });
+    } finally { btn.disabled = false; }
+  }
+  function restartText(p) {
+    return `Please restart the preview "${p.label}"` + (p.cmd ? ` (it was started with \`${p.cmd}\`)` : '') + ' and record it again.';
+  }
+  if (has3d) window.BmaRoom.onPreview = (p) => openPreview(p);
+  function renderPreviews(list) {
+    previews = list || [];
+    const box = $('#preview-box'), ul = $('#previews');
+    box.hidden = !previews.length;
+    ul.innerHTML = '';
+    previews.forEach((p) => {
+      const live = p.state === 'running';
+      const li = el('li', 'pv');
+      const head = el('div', 'head');
+      head.append(el('b', null, p.label), el('span', 'st' + (live ? ' running' : ''), PV_STATE[p.state] || p.state));
+      li.append(head, el('div', 'meta', [PV_KIND[p.kind] || p.kind, p.target, p.commit].filter(Boolean).join(' · ')));
+      if (p.shot) {
+        const b = el('button', 'shot'); b.type = 'button'; b.title = live ? 'Open the app' : 'Last screenshot';
+        b.setAttribute('aria-label', live ? `Open ${p.label}` : `Last screenshot of ${p.label}`);
+        const img = document.createElement('img');
+        img.alt = ''; img.src = `/api/preview-shot?token=${encodeURIComponent(token)}&id=${encodeURIComponent(p.id)}&v=${p.shot}`;
+        img.style.cssText = 'display:block;width:100%;max-height:220px;object-fit:contain;border-radius:8px';
+        b.append(img); b.disabled = !live; b.addEventListener('click', () => openPreview(p));
+        li.append(b);
+      }
+      const acts = el('div', 'acts');
+      if (live && (p.kind === 'web' || p.kind === 'api') && localUrl(p.target)) {
+        const a = el('a', 'primary', 'Open app ↗'); a.href = p.target; a.target = '_blank'; a.rel = 'noopener noreferrer';
+        acts.append(a);
+      } else if (live) {
+        const b = el('button', 'primary', 'Open app'); b.type = 'button'; b.addEventListener('click', () => openPreview(p));
+        acts.append(b);
+      } else {
+        const b = el('button', null, 'Ask Claude to restart…'); b.type = 'button';
+        b.addEventListener('click', () => {
+          if (chatOn) draft(restartText(p));
+          else { const err = $('#pv-error'); err.textContent = 'Chat is off: ask Claude in the terminal to restart the preview.'; err.hidden = false; }
+        });
+        acts.append(b);
+      }
+      if (live && (p.kind === 'ios' || p.kind === 'android')) {
+        const b = el('button', null, 'Refresh screenshot'); b.type = 'button';
+        b.addEventListener('click', () => refreshShot(p, b));
+        acts.append(b);
+      }
+      li.append(acts);
+      ul.append(li);
+    });
+    const main = previews.find((p) => p.state === 'running') || previews[0] || null;
+    room.setPreview(main && { ...main, live: main.state === 'running',
+      img: main.shot ? `/api/preview-shot?token=${encodeURIComponent(token)}&id=${encodeURIComponent(main.id)}&v=${main.shot}` : null });
+    renderTray();
+  }
 
   // ---------- colors ----------
   const pal = $('#palette');
@@ -330,6 +415,7 @@
     input.value = text;
     input.focus();
     input.setSelectionRange(text.length, text.length);
+    grow();
     $('#send').disabled = !chatOn || !input.value.trim();
   }
   async function answer(card, p, behavior) {
@@ -384,6 +470,8 @@
       const c = el('div', 'card');
       c.append(el('div', 't', 'Gate'), el('div', 'q', `${gate.title} is ready for your approval.`));
       const acts = el('div', 'acts');
+      const live = previews.find((p) => p.state === 'running');
+      if (live) { const t = button('Try the app first ↗', null, () => openPreview(live)); t.disabled = false; acts.append(t); }
       acts.append(button('Approve…', 'primary', () => draft(`I approve the ${gate.title} gate.`)),
         button('Ask for changes…', null, () => draft(`Before I approve the ${gate.title} gate, please change: `)));
       c.append(acts, el('div', 'hint', 'Puts your answer in the chat box to check and send.'));

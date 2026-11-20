@@ -29,4 +29,6 @@ within the resource budget (core resource protocol).
 
 ## Gate G5
 Automated: matrix 100% passing (manual items signed off by the user); audits without
-blockers. Approval per autonomy. Then `bma_state.py gate qa pass`.
+blockers. Before asking for approval, record the local build as a preview so the user can try it
+(`${CLAUDE_PLUGIN_ROOT}/skills/core/protocols/preview.md`). Approval per autonomy. Then
+`bma_state.py gate qa pass`.

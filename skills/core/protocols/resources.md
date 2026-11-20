@@ -32,7 +32,8 @@ Machines with 16 GB or less get one slot. Work there is sequential.
    create a new one per agent or per worktree. Shut down what you started when you finish.
 5. **One local backend stack.** Worktrees share the running `docker compose` services
    instead of starting their own copy, unless the feature changes them.
-6. **Clean up after each feature.** Stop dev servers and watchers you started. Let build
+6. **Clean up after each feature.** Stop dev servers and watchers you started, except the one
+   preview the user can try (`preview.md`). Let build
    daemons expire (idle timeout in the project config), or stop them once no other run is
    active. Remove merged worktrees, because each one holds its own build caches and daemons.
 7. **Never use watch mode** (`--watch`, `vitest` without `run`, `jest --watch`) in agents.
