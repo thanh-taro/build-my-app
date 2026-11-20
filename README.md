@@ -215,6 +215,16 @@ the channel flag, so those sessions never take messages meant for another. The 3
 three.js from jsDelivr (pinned, with an integrity hash); offline, the page falls back to the
 list. `/build-my-app:ui stop` closes it.
 
+**Try the app.** Whenever Claude has the app running locally in a state worth trying (after a
+feature is verified, in QA, and for a release candidate), it records a preview. The **Preview**
+panel at the top of the left sidebar shows a screenshot and an **Open app** button: a web app or
+API opens in a new tab; an iOS or Android app is launched in the Simulator or emulator. The TV on
+the room's wall shows the same screenshot, and gate cards get a *Try the app first* link. A
+stopped preview gets a button that asks Claude to restart it. Previews are local only (localhost
+URLs and app ids, checked), and a dev server Claude left running for one stops after 30 minutes
+with no page open, or when the UI closes. Claude can also manage them directly:
+`scripts/bma_preview.py add|list|open|shot|remove`.
+
 The **Colors** menu in the header switches palettes (Mint, Sky, Slate, or the warm Clay) for the
 page and the room; each browser remembers its choice, and `?palette=sky` in the link forces one.
 
@@ -222,7 +232,7 @@ To see it without a real run, play the demo. It builds a throwaway project in ph
 short story through the same hooks: two features built in parallel, the build queue, a code
 review, an accessibility audit, and a feature that gets stuck and rescued. It also stands in for
 the Claude Code session, so you can try the interactive parts: chat (canned replies), a tool
-approval and a hard stop, and a question from Claude.
+approval and a hard stop, a question from Claude, and a preview of a mock app to open.
 
 ```bash
 python3 scripts/bma_ui_demo.py --open        # loops until Ctrl-C; --once, --speed 2
@@ -240,7 +250,8 @@ python3 scripts/bma_ui_demo.py --open        # loops until Ctrl-C; --once, --spe
   injection, state/generated-file edit guard, destructive-command, deploy-before-phase-7, and
   unregistered-dependency guard, spec lint after spec edits, compaction log, pause notice on stop.
 - **Web UI**: `scripts/bma_ui.py` (local server), `scripts/bma_channel.py` with `.mcp.json`
-  (chat bridge, an MCP channel), `hooks/ui_events.py` (event recorder), `scripts/bma_events.py`
+  (chat bridge, an MCP channel), `hooks/ui_events.py` (event recorder), `hooks/ask_web.py`
+  (Claude's questions in the page), `scripts/bma_preview.py` (app previews), `scripts/bma_events.py`
   (event log), `ui/` (the page and the 3D room), `scripts/bma_ui_demo.py` (demo).
 - **Scripts**: `scripts/bma_state.py` (workflow state machine, stored in
   `.build-my-app/state.json` in the project).
@@ -249,7 +260,7 @@ python3 scripts/bma_ui_demo.py --open        # loops until Ctrl-C; --once, --spe
 
 ## Status
 
-v0.6.0 — skeleton. Web UI (`/build-my-app:ui`) with a live agent room, chat, approvals, and Claude's questions in the page. Builds and tests stay within a
+v0.7.0 — skeleton. Web UI (`/build-my-app:ui`) with a live agent room, chat, approvals, Claude's questions, and app previews. Builds and tests stay within a
 machine resource budget. Phases 0–1 and the core protocols are fully specified; phases 2–8 have
 complete step lists but are untested end to end. See `ROADMAP.md`.
 

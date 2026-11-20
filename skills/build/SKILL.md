@@ -27,7 +27,8 @@ Follow **core** (including the resource protocol). Load the stack pack skill and
 4. **Verify locally** (every build/test/run command through `bma_heavy.py --label F-xxx`):
    build; the feature's and its module's tests while iterating, then the full suite once;
    `spec_lint.py`; **run the app on the local environment** (local services and seed data, never a shared or production one) and capture screenshots of the
-   feature's screens/states; compare with the designs.
+   feature's screens/states; compare with the designs. Then record the running app as a
+   preview so the user can try it (`${CLAUDE_PLUGIN_ROOT}/skills/core/protocols/preview.md`).
 5. **Review** (review-loop protocol, loop `build-F-xxx`):
    `code-reviewer` (bugs, simplicity) + spec audit (every R implemented, every AC tested:
    `spec_lint.py --coverage <tests-dir>`) + `security-auditor` when the feature touches data,

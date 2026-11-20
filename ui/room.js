@@ -93,6 +93,45 @@
     if (old) old.dispose();
   }
 
+  // ---------- preview TV (left wall): the app as it looks now; click to open ----------
+  let preview = null, previewImg = null, previewImgUrl = null;
+  function drawTv(x) {
+    const w = x.canvas.width, h = x.canvas.height;
+    x.fillStyle = P.board; x.fillRect(0, 0, w, h);
+    if (preview && previewImg && previewImg.complete && previewImg.naturalWidth) {
+      const s = Math.min(w / previewImg.naturalWidth, (h - 44) / previewImg.naturalHeight);
+      const iw = previewImg.naturalWidth * s, ih = previewImg.naturalHeight * s;
+      x.drawImage(previewImg, (w - iw) / 2, (h - 44 - ih) / 2, iw, ih);
+    } else {
+      x.fillStyle = P.boardDim; x.font = '600 64px ui-sans-serif, -apple-system, sans-serif';
+      x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.fillText(preview ? '▶' : '·', w / 2, (h - 44) / 2);
+    }
+    x.fillStyle = 'rgba(0,0,0,.35)'; x.fillRect(0, h - 44, w, 44);
+    x.fillStyle = P.boardFg; x.font = '600 22px ui-sans-serif, -apple-system, sans-serif';
+    x.textAlign = 'left'; x.textBaseline = 'middle';
+    const line = !preview ? 'No preview yet' : preview.live ? `${preview.label} · click to open` : `${preview.label} · stopped`;
+    x.fillText(line.length > 40 ? line.slice(0, 39) + '…' : line, 16, h - 22);
+    if (preview && preview.live) { x.fillStyle = P.ok; x.beginPath(); x.arc(w - 22, h - 22, 8, 0, Math.PI * 2); x.fill(); }
+  }
+  function refreshTv() {
+    if (!refs.tv) return;
+    const old = refs.tv.material.map;
+    refs.tv.material.map = canvasTex(480, 300, drawTv);
+    refs.tv.material.needsUpdate = true;
+    if (old) old.dispose();
+  }
+  function setPreview(p) {
+    preview = p;
+    const url = p && p.img;
+    if (url !== previewImgUrl) {
+      previewImgUrl = url;
+      previewImg = null;
+      if (url) { previewImg = new Image(); previewImg.onload = refreshTv; previewImg.src = url; }
+    }
+    refreshTv();
+  }
+
   function buildRoom() {
     const g = new THREE.Group(); const add = (m) => (g.add(m), m);
     add(at(part('box', [12.2, 0.2, 9.2], P.floor, { noCast: true }), 0, -0.1, 0));
@@ -129,6 +168,9 @@
     add(at(part('box', [0.55, 0.1, 2.7], P.bench), -5.25, 0.37, 2.2));
     add(at(part('box', [0.5, 0.32, 0.08], P.leg), -5.25, 0.16, 1.0));
     add(at(part('box', [0.5, 0.32, 0.08], P.leg), -5.25, 0.16, 3.4));
+    add(at(part('box', [0.06, 1.04, 1.64], P.dark), -5.97, 1.85, 2.2));
+    refs.tv = add(at(new THREE.Mesh(new THREE.PlaneGeometry(1.52, 0.95), new THREE.MeshBasicMaterial({ map: canvasTex(480, 300, drawTv) })), -5.9, 1.85, 2.2));
+    refs.tv.rotation.y = Math.PI / 2;
     add(at(part('box', [0.75, 1.9, 0.6], P.rack), 5.2, 0.95, -3.95));
     refs.rack = [1.55, 1.25, 0.95].map((y) => add(at(part('box', [0.46, 0.08, 0.02], P.screenOff, { basic: true, noCast: true }), 5.2, y, -3.64)));
     [[-5.4, -3.9], [5.2, 3.7], [-1.0, 2.7]].forEach(([x, z], i) => {
@@ -440,6 +482,10 @@
   function pick(e) {
     const r = canvas.getBoundingClientRect(), ray = new THREE.Raycaster();
     ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+    if (refs.tv && preview && preview.live && ray.intersectObject(refs.tv).length) {
+      if (window.BmaRoom.onPreview) window.BmaRoom.onPreview(preview);
+      return;
+    }
     const hit = ray.intersectObjects(avatarRoot.children, true)[0];
     let o = hit && hit.object; while (o && !o.userData.aid) o = o.parent;
     const f = o && figs.get(o.userData.aid);
@@ -483,5 +529,5 @@
     return true;
   }
 
-  window.BmaRoom = { init, setAgents, setLead, setStatus, setHeavy };
+  window.BmaRoom = { init, setAgents, setLead, setStatus, setHeavy, setPreview, onPreview: null };
 })();

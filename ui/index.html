@@ -25,6 +25,12 @@
   </section>
 
   <aside class="side">
+    <section class="panel preview" id="preview-box" aria-label="Preview" hidden>
+      <h2>Preview</h2>
+      <ul class="previews" id="previews"></ul>
+      <p class="pv-error" id="pv-error" role="alert" hidden></p>
+    </section>
+
     <section class="panel agents" aria-label="Agents">
       <div class="roster-head">
         <h2>Agents</h2>
@@ -59,7 +65,7 @@
       <ol class="feed" id="feed" aria-live="polite"></ol>
       <form class="chat" id="chat">
         <label for="chat-input" class="sr">Message to Claude</label>
-        <textarea id="chat-input" rows="2" maxlength="4000" disabled placeholder="Checking for a Claude Code session…"></textarea>
+        <textarea id="chat-input" rows="1" maxlength="4000" disabled placeholder="Checking for a Claude Code session…"></textarea>
         <button type="submit" id="send" disabled>Send</button>
       </form>
       <div class="chat-note" id="chat-note" hidden>

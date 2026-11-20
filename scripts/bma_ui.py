@@ -34,6 +34,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import bma_preview  # noqa: E402
 import bma_state  # noqa: E402
 from bma_events import append, clip, events_path, lower_first, ui_dir, ui_info_path  # noqa: E402
 from bma_resources import memory_state  # noqa: E402
@@ -47,6 +48,8 @@ STUCK_AFTER = 3         # consecutive failed heavy runs before an agent shows as
 QUIET_AFTER = 45        # seconds with no sign of Claude after a web message is delivered
 BRIDGE_STALE = 15       # seconds without a heartbeat before a chat bridge counts as gone
 MAX_CHAT = 4000         # characters per web message
+PREVIEW_EVERY = 5       # seconds between preview liveness checks while a page is open
+PREVIEW_IDLE_STOP = 1800  # no page open this long → stop preview servers Claude left running
 
 
 def project_root() -> Path:
@@ -151,6 +154,10 @@ class Model:
             return set()
         if ev in ("permission", "permission_answer", "permission_refused", "tool_done"):
             return self._permission(ev, e, ts)
+        if ev == "preview":
+            self._say("assistant", f"The app is ready to try: {e.get('label') or 'preview'}. Use Open app in the Preview panel.",
+                      ts, kind="preview")
+            return {"feed", "previews"}
         if ev == "question":
             qs = [q for q in (e.get("questions") or []) if isinstance(q, dict) and q.get("question")]
             self.questions[str(e.get("qid"))] = {"qid": str(e.get("qid")), "questions": qs, "ts": ts, "state": "open"}
@@ -415,9 +422,25 @@ def bridges(root: Path) -> dict:
     return out
 
 
+_previews = {"at": 0.0, "items": []}
+
+
+def previews(root: Path, fresh: bool = False) -> list[dict]:
+    """Recorded previews with their state; cached, since checking a simulator takes a moment."""
+    if fresh or time.time() - _previews["at"] > PREVIEW_EVERY:
+        items = []
+        for p in bma_preview.load(root):
+            shot = bma_preview.shots_dir(root) / f"{p['id']}.png"
+            items.append({k: p.get(k) for k in ("id", "kind", "target", "label", "cmd", "commit", "added")}
+                         | {"state": bma_preview.state_of(p), "shot": int(p.get("shot_at") or 0) if shot.exists() else 0})
+        _previews.update(at=time.time(), items=items)
+    return _previews["items"]
+
+
 def snapshot(root: Path, model: "Model") -> dict:
     return {"state": state_payload(root), **model.agents_payload(), "feed": model.feed_payload(),
-            "bridge": bridges(root), "perms": model.perms_payload(), "questions": model.questions_payload()}
+            "bridge": bridges(root), "perms": model.perms_payload(), "questions": model.questions_payload(),
+            "previews": previews(root)}
 
 
 # -- server -------------------------------------------------------------------
@@ -452,7 +475,20 @@ class Hub:
 def watch(root: Path, model: Model, hub: Hub, stop: threading.Event) -> None:
     sp, ep = root / ".build-my-app" / "state.json", events_path(root)
     state_mtime, offset, last_pressure, last_push, last_bridge = 0.0, 0, None, 0.0, None
+    last_previews, last_viewer = None, time.time()
     while not stop.is_set():
+        if hub.clients:
+            last_viewer = time.time()
+            if time.time() - _previews["at"] > PREVIEW_EVERY:
+                pv = previews(root, fresh=True)
+                if pv != last_previews:
+                    last_previews = pv
+                    hub.send("previews", pv)
+        elif time.time() - last_viewer > PREVIEW_IDLE_STOP:
+            last_viewer = time.time()
+            stopped = [p["label"] for p in bma_preview.load(root) if bma_preview.stop_owned(root, p)]
+            if stopped:
+                append(root, {"ev": "reply", "interim": True, "text": "Stopped the idle preview: " + ", ".join(stopped)})
         b = bridges(root)
         if b != last_bridge:
             last_bridge = b
@@ -493,6 +529,10 @@ def watch(root: Path, model: Model, hub: Hub, stop: threading.Event) -> None:
                     hub.send("chat_status", st)
                 if "agents" in changed:
                     hub.send("agents", model.agents_payload())
+                if "previews" in changed:
+                    pv = previews(root, fresh=True)
+                    last_previews = pv
+                    hub.send("previews", pv)
                 if "questions" in changed:
                     hub.send("questions", model.questions_payload())
                 if "perms" in changed:
@@ -549,6 +589,17 @@ def make_handler(root: Path, port: int, token: str, model: Model, hub: Hub):
                 body = json.dumps(snapshot(root, model), ensure_ascii=False).encode()
                 self._headers(200, "application/json; charset=utf-8")
                 return self.wfile.write(body)
+            if u.path == "/api/preview-shot":
+                if not self._token_ok(qs):
+                    return self._deny()
+                pid = (qs.get("id") or [""])[0]
+                if not any(p["id"] == pid for p in bma_preview.load(root)):
+                    return self._deny(404, "not found")
+                f = bma_preview.shots_dir(root) / f"{pid}.png"
+                if not f.is_file():
+                    return self._deny(404, "no screenshot")
+                self._headers(200, "image/png")
+                return self.wfile.write(f.read_bytes())
             if u.path == "/events":
                 if not self._token_ok(qs):
                     return self._deny()
@@ -582,7 +633,7 @@ def make_handler(root: Path, port: int, token: str, model: Model, hub: Hub):
 
         def do_POST(self):
             path = urlparse(self.path).path
-            if path not in ("/api/chat", "/api/permission", "/api/answer", "/api/presence"):
+            if path not in ("/api/chat", "/api/permission", "/api/answer", "/api/presence", "/api/preview"):
                 return self._deny(404, "not found")
             body = self._read_json()
             if body is None:
@@ -593,6 +644,8 @@ def make_handler(root: Path, port: int, token: str, model: Model, hub: Hub):
                 return self._answer(body)
             if path == "/api/presence":
                 return self._presence(body)
+            if path == "/api/preview":
+                return self._preview(body)
             text = str(body.get("text") or "").strip()
             if not text:
                 return self._deny(400, "empty message")
@@ -607,6 +660,24 @@ def make_handler(root: Path, port: int, token: str, model: Model, hub: Hub):
                 f.write(json.dumps(msg, ensure_ascii=False) + "\n")
             append(root, {"ev": "prompt", "via": "web", "chat_id": chat_id, "text": text})
             self._ok({"chat_id": chat_id})
+
+        def _preview(self, body: dict):
+            items = bma_preview.load(root)
+            p = next((x for x in items if x["id"] == str(body.get("id") or "")), None)
+            if not p:
+                return self._deny(404, "This preview is gone. Reload the page.")
+            if body.get("action") == "shot":
+                ok, msg = bma_preview.take_shot(root, p), "Screenshot updated."
+            elif body.get("action") == "open":
+                ok, msg = bma_preview.open_preview(root, p)
+            else:
+                return self._deny(400, "action must be open or shot")
+            bma_preview.save(root, items)
+            pv = previews(root, fresh=True)
+            hub.send("previews", pv)
+            if not ok:
+                return self._deny(409, msg)
+            self._ok({"ok": True, "message": msg})
 
         def _presence(self, body: dict):
             """The page says it is open (and whether it is visible); the question hook reads this."""
@@ -789,6 +860,9 @@ def cmd_stop(_a) -> None:
         ui_info_path(root).unlink(missing_ok=True)
         print("Not running.")
         return
+    stopped = [p["label"] for p in bma_preview.load(root) if bma_preview.stop_owned(root, p)]
+    if stopped:
+        print("Stopped preview servers: " + ", ".join(stopped))
     os.kill(info["pid"], signal.SIGTERM)
     for _ in range(30):
         if not pid_alive(info["pid"]):
