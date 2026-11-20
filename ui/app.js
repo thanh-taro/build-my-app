@@ -27,12 +27,15 @@
     $('#feed').innerHTML = ''; seen.clear();
     (d.feed || []).forEach(addFeed);
     renderAgents(d, !gotSnapshot);
+    renderBridge(d.bridge);
     gotSnapshot = true;
     if (!(d.feed || []).length) emptyFeed();
   });
   es.addEventListener('state', (m) => renderState(JSON.parse(m.data)));
   es.addEventListener('agents', (m) => renderAgents(JSON.parse(m.data), false));
   es.addEventListener('feed', (m) => addFeed(JSON.parse(m.data)));
+  es.addEventListener('bridge', (m) => renderBridge(JSON.parse(m.data)));
+  es.addEventListener('chat_status', (m) => { const d = JSON.parse(m.data); setChatStatus(d.chat_id, d.status); });
 
   // ---------- status ----------
   function kv(list, rows) {
@@ -126,7 +129,7 @@
   // ---------- feed ----------
   const seen = new Set();
   function emptyFeed() {
-    $('#feed').append(el('li', 'empty', 'Nothing yet. Talk to Claude in the terminal: your messages, its replies, and agent updates show up here.'));
+    $('#feed').append(el('li', 'empty', 'Nothing yet. Talk to Claude here or in the terminal: both sides of the conversation and agent updates show up here.'));
   }
   function hhmm(ts) { return new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
   function addFeed(item) {
@@ -136,18 +139,79 @@
     const feed = $('#feed');
     const empty = feed.querySelector('.empty'); if (empty) empty.remove();
     const nearBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 60;
-    const kind = item.who === 'you' ? 'you' : item.who === 'assistant' ? 'assistant' : 'agent';
-    const li = el('li', kind);
+    const kind = item.who === 'you' ? 'you' : item.who === 'assistant' ? 'assistant' : item.who === 'system' ? 'system' : 'agent';
+    const li = el('li', kind + (item.kind === 'note' && kind === 'assistant' ? ' note' : ''));
     const who = el('div', 'who');
-    who.append(el('b', null, item.who === 'you' ? 'You' : item.who === 'assistant' ? 'Assistant' : item.who));
-    if (item.via) who.append(el('span', 'badge', item.via === 'terminal' ? '⌨ terminal' : '🌐 web'));
+    who.append(el('b', null, { you: 'You', assistant: 'Assistant', system: 'Note' }[kind] || item.who));
+    if (item.via) who.append(el('span', 'badge', item.via === 'terminal' ? '⌨ terminal' : item.via === 'web' ? '🌐 web' : `✉ ${item.via}`));
     who.append(el('span', null, hhmm(item.ts)));
     li.append(who, el('div', 'msg', item.text));
+    if (item.chat_id) {
+      li.dataset.chat = item.chat_id;
+      li.append(el('span', 'st'));
+      paintStatus(li, item.status);
+    }
     feed.append(li);
     while (feed.children.length > 200) feed.firstChild.remove();
     if (nearBottom) feed.scrollTop = feed.scrollHeight;
     if (item.who === 'assistant') room.setLead(firstSentence(item.text));
+    if (item.who === 'you' && item.via === 'web') room.setLead('Got your message. One moment…');
   }
+  // ---------- chat ----------
+  const STATUS = { sent: 'Sent', delivered: 'Delivered to Claude', seen: 'Claude is on it', quiet: 'No reaction from Claude yet' };
+  function paintStatus(li, status) {
+    const st = li.querySelector('.st');
+    if (!st) return;
+    st.textContent = STATUS[status] || '';
+    st.className = 'st ' + (status || '');
+  }
+  function setChatStatus(id, status) {
+    const li = document.querySelector(`#feed li[data-chat="${CSS.escape(id)}"]`);
+    if (li) paintStatus(li, status);
+  }
+  let chatOn = false;
+  function renderBridge(b) {
+    b = b || { sessions: 0, chat: 0 };
+    chatOn = b.chat > 0;
+    const input = $('#chat-input'), note = $('#chat-note');
+    input.disabled = !chatOn;
+    input.placeholder = chatOn ? 'Message Claude. Enter sends, Shift+Enter adds a line.' : 'Chat is off. See the note below.';
+    $('#send').disabled = !chatOn || !input.value.trim();
+    note.hidden = chatOn;
+    $('#chat-note-text').textContent = b.sessions
+      ? 'Claude Code is running, but without chat. To chat from this page, restart it in this project with:'
+      : 'No Claude Code session is connected. To chat from this page, start one in this project with:';
+  }
+  const input = $('#chat-input');
+  input.addEventListener('input', () => { $('#send').disabled = !chatOn || !input.value.trim(); });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('#chat').requestSubmit(); }
+  });
+  $('#chat').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text || !chatOn) return;
+    const err = $('#chat-error'); err.hidden = true;
+    $('#send').disabled = true;
+    try {
+      const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Token': token },
+        body: JSON.stringify({ text }) });
+      if (!r.ok) throw new Error(await r.text() || `Sending failed (${r.status}).`);
+      input.value = '';
+    } catch (ex) {
+      err.textContent = ex.message; err.hidden = false;
+    } finally {
+      $('#send').disabled = !chatOn || !input.value.trim();
+      input.focus();
+    }
+  });
+  $('#copy-cmd').addEventListener('click', async () => {
+    const btn = $('#copy-cmd');
+    try { await navigator.clipboard.writeText($('#chat-cmd').textContent); btn.textContent = 'Copied'; }
+    catch (ex) { const r = document.createRange(); r.selectNodeContents($('#chat-cmd')); getSelection().removeAllRanges(); getSelection().addRange(r); btn.textContent = 'Selected'; }
+    setTimeout(() => (btn.textContent = 'Copy'), 1500);
+  });
+
   function firstSentence(t) {
     const s = (t || '').replace(/[#*`_>]/g, '').trim();
     const m = s.match(/^(.{20,160}?[.!?])(\s|$)/);

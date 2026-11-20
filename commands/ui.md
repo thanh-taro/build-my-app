@@ -1,5 +1,5 @@
 ---
-description: Open the build-my-app web UI — a live room of the agents at work, the conversation, and the progress panel.
+description: Open the build-my-app web UI — chat with Claude, watch the agents at work in a live room, and follow progress.
 argument-hint: "[stop|status]"
 allowed-tools: Bash(python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bma_ui.py *)
 ---
@@ -10,7 +10,11 @@ Argument: `$ARGUMENTS`
 - `status` → run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bma_ui.py status` and report it.
 - anything else, or empty → run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/bma_ui.py start --open`.
 
-After `start`, reply in at most four lines: the URL exactly as printed (it carries the access
-token, so it must be copied whole), that the page updates live, and that this version only
-watches: the user keeps typing in the terminal, and their messages and your replies show up
-in the page's front desk. Mention `/build-my-app:ui stop` to close it. Do not start other work.
+After `start`, reply in at most five lines:
+- the URL exactly as printed (it carries the access token, so copy it whole);
+- whether chat is on, as the command printed. If it printed the restart command, show it in a
+  code block and say the page still works as a live view without it;
+- `/build-my-app:ui stop` closes it.
+
+Messages typed in the page arrive in this session as channel events from the same user:
+handle them exactly like terminal messages. Do not start other work now.

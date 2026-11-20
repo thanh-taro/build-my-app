@@ -164,8 +164,8 @@ Phases 2 and 3 run in parallel after gate 1. Shared rules live in the `core` ski
 Opens a local page (127.0.0.1 only, with a random access token in the link) that shows the
 run as a small 3D service center:
 
-- **Front desk:** the conversation. Your messages from the terminal, Claude's replies, and
-  short notes when it hands out work or an agent finishes.
+- **Front desk:** the conversation, from both sides. Type in the page or in the terminal; both
+  show up here, with Claude's replies and short notes when it hands out work or an agent finishes.
 - **Back office:** each subagent appears as a clay figure when it starts. It walks in, works at
   a desk and says what it is doing, waits on the bench while a heavy build or test run is
   queued, shows a red mark after three failed heavy runs in a row, and leaves when it is done.
@@ -173,11 +173,28 @@ run as a small 3D service center:
 - **Progress:** phases and gates, open decisions, review loops, the machine budget and memory
   pressure, and the environment recorded in setup.
 
-This version only watches: keep typing in the terminal. Chatting from the page comes next
-(via Claude Code channels). The UI adds no load when it is off. Its hooks run in the
-background and do nothing unless the server is running. The 3D view loads three.js from
-jsDelivr (pinned, with an integrity hash); offline, the page falls back to the list.
-`/build-my-app:ui stop` closes it.
+**Chatting from the page** uses Claude Code
+[channels](https://code.claude.com/docs/en/channels), a research preview. Start Claude Code in
+the project with the plugin's channel turned on:
+
+```bash
+claude --dangerously-load-development-channels plugin:build-my-app@taro-tools
+```
+
+Claude Code shows a warning screen for development channels at each start; choose "I am using
+this for local development". Until channels leave the preview, a plugin outside Anthropic's
+allowlist needs this flag. Without it, the page still works as a live view, and the chat box
+says how to turn chat on. Messages typed in the page reach the session like terminal messages
+(`← bma: …` in the terminal), and Claude's final answer of each turn appears in the page.
+Each message shows whether it was delivered and whether Claude reacted. Organizations on
+claude.ai Team or Enterprise must enable channels first (`channelsEnabled`).
+
+The UI adds no load when it is off. Its hooks run in the background and do nothing unless the
+server is running. The chat bridge (`bma_channel.py`, an MCP server the plugin declares) starts
+with every session but stays idle outside build-my-app projects and in sessions started without
+the channel flag, so those sessions never take messages meant for another. The 3D view loads
+three.js from jsDelivr (pinned, with an integrity hash); offline, the page falls back to the
+list. `/build-my-app:ui stop` closes it.
 
 To see it without a real run, play the demo. It builds a throwaway project in phase 4 and replays a
 short story through the same hooks: two features built in parallel, the build queue, a code
@@ -198,8 +215,9 @@ python3 scripts/bma_ui_demo.py --open        # loops until Ctrl-C; --once, --spe
 - **Hooks** (no-ops outside build-my-app projects): session orientation, spec-ID context
   injection, state/generated-file edit guard, destructive-command, deploy-before-phase-7, and
   unregistered-dependency guard, spec lint after spec edits, compaction log, pause notice on stop.
-- **Web UI**: `scripts/bma_ui.py` (local server), `hooks/ui_events.py` (event recorder),
-  `scripts/bma_events.py` (event log), `ui/` (the page and the 3D room).
+- **Web UI**: `scripts/bma_ui.py` (local server), `scripts/bma_channel.py` with `.mcp.json`
+  (chat bridge, an MCP channel), `hooks/ui_events.py` (event recorder), `scripts/bma_events.py`
+  (event log), `ui/` (the page and the 3D room), `scripts/bma_ui_demo.py` (demo).
 - **Scripts**: `scripts/bma_state.py` (workflow state machine, stored in
   `.build-my-app/state.json` in the project).
 - **Project template** (`templates/project/`): spec tree with templates and rules, spec lint
@@ -207,7 +225,7 @@ python3 scripts/bma_ui_demo.py --open        # loops until Ctrl-C; --once, --spe
 
 ## Status
 
-v0.3.0 — skeleton. Adds a watch-only web UI (`/build-my-app:ui`). Builds and tests stay within a
+v0.4.0 — skeleton. Web UI (`/build-my-app:ui`) with a live agent room and chat from the page. Builds and tests stay within a
 machine resource budget. Phases 0–1 and the core protocols are fully specified; phases 2–8 have
 complete step lists but are untested end to end. See `ROADMAP.md`.
 
