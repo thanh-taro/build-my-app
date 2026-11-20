@@ -65,3 +65,33 @@ mkdir -p specs/20-features
 printf -- '---\nid: F-001\ntitle: Bad\nstatus: draft\nmilestone: M-1\npriority: P0\n---\n- **R1** uses RULE-99\n- **AC1** Given x, when y, then z. (R1)\n' > specs/20-features/F-001-bad.md
 echo "{\"tool_input\":{\"file_path\":\"$T/specs/20-features/F-001-bad.md\"}}" | hook post_edit_lint; echo "post_edit_lint exit=$?"
 echo '{"prompt":"implement F-001 and see F-001.R1 in F-001-bad.md"}' | hook prompt_spec_ids; echo
+
+echo "== 7. web UI: server, event hook, heavy-run events"
+H() { printf '%s' "$1" | hook ui_events; }
+H '{"hook_event_name":"SubagentStart","agent_id":"a1","agent_type":"build-my-app:feature-builder"}'
+ls .build-my-app/tmp/ui/events.jsonl 2>/dev/null || echo "(UI off → no event log)"
+python3 "$P/scripts/bma_ui.py" start --port 7399
+python3 "$P/scripts/bma_ui.py" status
+H '{"hook_event_name":"UserPromptSubmit","prompt":"build F-001"}'
+H '{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":"build-my-app:feature-builder","description":"Implement F-001"},"tool_use_id":"t1"}'
+H '{"hook_event_name":"SubagentStart","agent_id":"a1","agent_type":"build-my-app:feature-builder"}'
+H '{"hook_event_name":"PreToolUse","agent_id":"a1","agent_type":"build-my-app:feature-builder","tool_name":"Bash","tool_input":{"command":"python3 x/bma_heavy.py --label F-001 -- true"}}'
+python3 "$P/scripts/bma_heavy.py" --label F-001 -- true
+H '{"hook_event_name":"SubagentStop","agent_id":"a1","agent_type":"build-my-app:feature-builder","last_assistant_message":"F-001 done: 4 tests pass."}'
+sleep 1
+python3 - <<'PY'
+import json, urllib.request, urllib.error
+i = json.load(open(".build-my-app/tmp/ui/ui.json"))
+base = f"http://127.0.0.1:{i['port']}"
+d = json.load(urllib.request.urlopen(f"{base}/api/snapshot?token={i['token']}"))
+print("phase:", d["state"]["current"], "| agents:", [(a["type"], a["status"], a["result"]) for a in d["agents"]])
+print("feed:", [f["who"] for f in d["feed"]])
+for name, url, headers in (("no token", f"{base}/api/snapshot", {}),
+                           ("wrong host", f"{base}/api/snapshot?token={i['token']}", {"Host": "evil.test"})):
+    try:
+        urllib.request.urlopen(urllib.request.Request(url, headers=headers)); print(name, "→ 200 (BAD)")
+    except urllib.error.HTTPError as e:
+        print(name, "→", e.code)
+PY
+python3 "$P/scripts/bma_ui.py" stop
+ls .build-my-app/tmp/ui/ui.json 2>/dev/null || echo "(ui.json removed → hooks idle again)"

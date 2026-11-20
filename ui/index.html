@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>build-my-app</title>
+<link rel="stylesheet" href="/ui/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="mark" aria-hidden="true"></span><b id="project">build-my-app</b></div>
+  <div class="phase" id="phase-line">Connecting…</div>
+  <div class="conn" id="conn" data-state="connecting"><i></i><span>Connecting</span></div>
+</header>
+
+<main class="layout">
+  <section class="desk" aria-label="Front desk">
+    <h2>Front desk</h2>
+    <ol class="feed" id="feed" aria-live="polite"></ol>
+    <form class="chat" id="chat">
+      <label for="chat-input" class="sr">Message</label>
+      <textarea id="chat-input" rows="2" disabled placeholder="Chat here comes next. For now, type in the terminal."></textarea>
+      <button type="submit" disabled>Send</button>
+    </form>
+  </section>
+
+  <section class="room" aria-label="Back office">
+    <div class="stage" id="stage">
+      <canvas id="scene" aria-hidden="true"></canvas>
+      <div class="layer" id="layer"></div>
+      <p class="no3d" id="no3d" hidden>The 3D room can't load (offline, or WebGL is off). The list below shows the same agents.</p>
+    </div>
+    <div class="roster-head">
+      <h2>Agents</h2>
+      <span id="heavy" class="muted"></span>
+    </div>
+    <ul class="roster" id="roster"></ul>
+  </section>
+
+  <aside class="status" aria-label="Status">
+    <h2>Progress</h2>
+    <ol class="rail" id="rail"></ol>
+    <p class="step" id="step"></p>
+    <div id="decisions-box" hidden>
+      <h3>Waiting on you</h3>
+      <ul class="decisions" id="decisions"></ul>
+      <p class="muted small">Answer in the terminal with <code>/build-my-app:decide</code>.</p>
+    </div>
+    <div id="loops-box" hidden>
+      <h3>Review loops</h3>
+      <ul class="kv" id="loops"></ul>
+    </div>
+    <h3>Machine</h3>
+    <ul class="kv" id="machine"></ul>
+    <h3>Environment</h3>
+    <ul class="kv" id="env"></ul>
+  </aside>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"
+        integrity="sha384-RRHfJ6w1mTlKUBMYT/hvnRiOzEB/vyRV3DrQOseb6oYfvaZSfdd0byS4bHps0k2R"
+        crossorigin="anonymous"></script>
+<script src="/ui/cast.js"></script>
+<script src="/ui/room.js"></script>
+<script src="/ui/app.js"></script>
+</body>
+</html>

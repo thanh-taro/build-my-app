@@ -31,6 +31,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from bma_events import append as ui_event  # noqa: E402
 from bma_resources import budget, memory_state  # noqa: E402
 
 POLL = 2.0
@@ -45,13 +46,28 @@ def git_common_dir() -> Path | None:
         return None
 
 
-def configured_budget() -> dict:
+def project_roots() -> list[Path]:
     """State lives in the main checkout; worktrees find it through the git common dir."""
     roots = [Path(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd())]
     common = git_common_dir()
-    if common:
+    if common and common.parent not in roots:
         roots.append(common.parent)
-    for root in roots:
+    return roots
+
+
+def state_root() -> Path | None:
+    return next((r for r in project_roots() if (r / ".build-my-app" / "state.json").exists()), None)
+
+
+def report(ev: str, label: str, **extra) -> None:
+    """Tell the web UI (if it is running) about the heavy-run queue."""
+    root = state_root()
+    if root:
+        ui_event(root, {"ev": ev, "label": label, "pid": os.getpid(), **extra})
+
+
+def configured_budget() -> dict:
+    for root in project_roots():
         p = root / ".build-my-app" / "state.json"
         try:
             res = json.loads(p.read_text()).get("resources")
@@ -92,6 +108,7 @@ def acquire(slots: int, label: str, timeout: float):
         if not announced:
             print(f"[bma_heavy] waiting for a free slot ({slots} max) — another heavy run is in progress",
                   file=sys.stderr, flush=True)
+            report("heavy_wait", label, slots=slots)
             announced = True
         if timeout and time.time() - start > timeout:
             sys.exit(f"[bma_heavy] gave up after {int(timeout)}s waiting for a slot")
@@ -149,14 +166,17 @@ def main() -> int:
     slots = max(1, a.slots or int(res.get("heavy_slots", 1)))
     workers = max(1, a.workers or int(res.get("test_workers", 2)))
 
-    lock = acquire(slots, a.label or " ".join(cmd)[:80], a.wait_timeout)
+    label = a.label or " ".join(cmd)[:80]
+    lock = acquire(slots, label, a.wait_timeout)
     wait_for_memory()
+    report("heavy_run", label, slots=slots)
     print(f"[bma_heavy] running ({slots} slot(s), {workers} test worker(s)): {' '.join(cmd)}",
           file=sys.stderr, flush=True)
     shell = len(cmd) == 1  # a single string → let the shell parse it (pipes, &&)
     proc = subprocess.Popen(cmd[0] if shell else cmd, shell=shell, env=worker_env(workers),
                             start_new_session=True, preexec_fn=lambda: os.nice(10))
     strikes = 0
+    code = None
     try:
         while proc.poll() is None:
             time.sleep(POLL)
@@ -169,12 +189,15 @@ def main() -> int:
                       "  selection, close simulators/emulators/dev servers you do not need, then retry.",
                       file=sys.stderr, flush=True)
                 kill_group(proc)
-                return 137
+                code = 137
+                return code
     except KeyboardInterrupt:
         kill_group(proc)
-        return 130
+        code = 130
+        return code
     finally:
         lock.close()
+        report("heavy_done", label, code=proc.returncode if code is None else code)
     return proc.returncode
 
 
