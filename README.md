@@ -41,6 +41,19 @@ Local edits take effect after `/reload-plugins`.
 Run `/build-my-app:status` in any folder. Outside a build-my-app project it reports that
 there is no state yet. That means the plugin is loaded.
 
+### Optional: chat from the web UI
+
+The [web UI](#web-ui) works as a live view in any session. To also chat and answer prompts from
+the page, start Claude Code in your project with the plugin's chat channel turned on:
+
+```bash
+claude --dangerously-load-development-channels plugin:build-my-app@taro-tools
+```
+
+Claude Code shows a warning about development channels at each start; choose "I am using this
+for local development". See [Chatting from the page](#chatting-from-the-page) for why the flag is
+needed.
+
 ### Optional: plain `/build-my-app`
 
 ```bash
@@ -162,7 +175,9 @@ Phases 2 and 3 run in parallel after gate 1. Shared rules live in the `core` ski
 ```
 
 Opens a local page (127.0.0.1 only, with a random access token in the link) that shows the
-run as a small 3D service center:
+run as a small 3D service center. To chat from the page, start Claude Code with
+`claude --dangerously-load-development-channels plugin:build-my-app@taro-tools`
+([details](#chatting-from-the-page)); without it, the page is a live view.
 
 - **Front desk** (along the bottom): the conversation, from both sides. Claude appears here as the
   **Project Lead**: it plans the work, hands it to the agents, and brings decisions to you. Type in
@@ -174,12 +189,14 @@ run as a small 3D service center:
   Each agent type has its own color and prop. The Project Lead stands at the front desk with a
   headset. A speech bubble shows what a figure just said for a few seconds, then shrinks to its
   name so it doesn't hide the room; click a figure to keep its bubble open.
-- **Left sidebar:** the **Preview** panel when the app can be tried (see *Try the app* below),
+- **Left sidebar:** the **Preview** panel when the app can be tried (see [Try the app](#try-the-app)),
   the **Agents** list (who is working on what), and **Progress**: phases and gates, open
   decisions, review loops, the machine budget and memory pressure, and the environment recorded
   in setup.
 
-**Chatting from the page** uses Claude Code
+### Chatting from the page
+
+This uses Claude Code
 [channels](https://code.claude.com/docs/en/channels), a research preview. Start Claude Code in
 the project with the plugin's channel turned on:
 
@@ -195,7 +212,9 @@ says how to turn chat on. Messages typed in the page reach the session like term
 Each message shows whether it was delivered and whether Claude reacted. Organizations on
 claude.ai Team or Enterprise must enable channels first (`channelsEnabled`).
 
-**Things that need you** appear as cards above the chat box:
+### Things that need you
+
+They appear as cards beside the chat, on the right of the front desk:
 
 - **Tool approvals.** When Claude Code asks before running a tool, the same prompt appears in
   the page with *Allow once* and *Deny*. The terminal prompt stays open; the first answer
@@ -219,7 +238,9 @@ the channel flag, so those sessions never take messages meant for another. The 3
 three.js from jsDelivr (pinned, with an integrity hash); offline, the page falls back to the
 list. `/build-my-app:ui stop` closes it.
 
-**Try the app.** Whenever Claude has the app running locally in a state worth trying (after a
+### Try the app
+
+Whenever Claude has the app running locally in a state worth trying (after a
 feature is verified, in QA, and for a release candidate), it records a preview. The **Preview**
 panel at the top of the left sidebar shows a screenshot and an **Open app** button: a web app or
 API opens in a new tab; an iOS or Android app is launched in the Simulator or emulator. The TV on
@@ -228,6 +249,8 @@ stopped preview gets a button that asks Claude to restart it. Previews are local
 URLs and app ids, checked), and a dev server Claude left running for one stops after 30 minutes
 with no page open, or when the UI closes. Claude can also manage them directly:
 `scripts/bma_preview.py add|list|open|shot|remove`.
+
+### Colors and demo
 
 The **Colors** menu in the header switches palettes (Mint, Sky, Slate, or the warm Clay) for the
 page and the room; each browser remembers its choice, and `?palette=sky` in the link forces one.
