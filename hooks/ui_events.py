@@ -132,6 +132,8 @@ def build(data: dict, root: Path) -> dict | None:
         tr = tr if isinstance(tr, dict) else {}
         return {**base, "ev": "spawned", "id": data.get("tool_use_id"), "child": tr.get("agentId"),
                 "status": tr.get("status")}
+    if ev == "PostToolUse" and data.get("tool_name") == "AskUserQuestion":
+        return {**base, "ev": "question_answered", "tool_use_id": data.get("tool_use_id")}
     if ev == "PostToolUse":
         # Only while the page shows an approval card: tells it the prompt was answered (in the terminal).
         if not (ui_dir(root) / "perm_open").exists():

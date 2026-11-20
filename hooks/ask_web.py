@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """PreToolUse (AskUserQuestion): let the user answer Claude's question in the web UI.
 
-Only when the web page is open and was visible in the last minute; otherwise this hook does
-nothing and the question opens in the terminal as usual. While the page has the question, the
+Only when the web page is open and was visible in the last minute; otherwise the question opens
+in the terminal as usual, and the page shows it as "waiting in the terminal" (read-only) so it
+never misses one. While the page has the question, the
 terminal shows no dialog (a hook runs before it), so the wait ends when:
   - the user answers in the page → the hook returns the answers and the tool runs without a dialog;
   - the user clicks "Answer in the terminal", closes the page, or WAIT_MAX passes → the hook
@@ -44,12 +45,15 @@ def main() -> None:
     questions = ti.get("questions") or []
     if not questions or ti.get("answers"):
         return
+    tid = data.get("tool_use_id")
     if time.time() - presence(root).get("visible", 0) > VISIBLE_WITHIN:
+        append(root, {"ev": "question", "qid": "q" + secrets.token_hex(4), "questions": questions,
+                      "agent": data.get("agent_id"), "tool_use_id": tid, "where": "terminal"})
         return
     qid = "q" + secrets.token_hex(4)
     answer_file = ui_dir(root) / "answers" / f"{qid}.json"
     answer_file.parent.mkdir(parents=True, exist_ok=True)
-    append(root, {"ev": "question", "qid": qid, "questions": questions, "agent": data.get("agent_id")})
+    append(root, {"ev": "question", "qid": qid, "questions": questions, "agent": data.get("agent_id"), "tool_use_id": tid})
     end = time.time() + WAIT_MAX
     reason = "timeout"
     while time.time() < end:

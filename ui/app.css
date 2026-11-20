@@ -114,6 +114,9 @@ code { font: 12px var(--f-mono); background: var(--chip); padding: 1px 5px; bord
 .card.ask { border-left-color: var(--ok); }
 .card fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 5px; }
 .card legend { font-weight: 600; padding: 0; margin-bottom: 4px; overflow-wrap: anywhere; }
+.card.terminal .tq { display: grid; gap: 4px; }
+.card.terminal .tq-opts { margin: 0; padding-left: 18px; display: grid; gap: 2px; font-size: 13px; }
+.card.terminal .tq-opts small { color: var(--muted); }
 .card .chip { font-size: 11px; font-weight: 600; padding: 1px 7px; margin-right: 6px; border-radius: 99px; background: var(--chip); color: var(--muted); }
 .card .opt { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 6px; align-items: start; padding: 5px 7px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); cursor: pointer; }
 .card .opt:has(input:checked) { border-color: var(--accent); }

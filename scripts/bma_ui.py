@@ -126,7 +126,10 @@ class Model:
     # Each apply returns the kinds of change it made: {"agents", "feed"}.
     def apply(self, e: dict) -> set[str]:
         with self.lock:
-            return self._apply(e)
+            moved_on = (not e.get("agent") and e.get("ev") in ("tool", "spawn", "reply", "prompt")
+                        and e.get("tool") != "AskUserQuestion" and self._close_terminal_questions(e.get("ts") or time.time()))
+            changed = self._apply(e)
+            return (set(changed) | {"questions"}) if moved_on else changed
 
     def _say(self, who: str, text: str, ts: float, **kw) -> None:
         if text:
@@ -159,23 +162,34 @@ class Model:
                       ts, kind="preview")
             return {"feed", "previews"}
         if ev == "question":
+            # "open": the page can answer it; "terminal": shown read-only while it waits in the terminal
             qs = [q for q in (e.get("questions") or []) if isinstance(q, dict) and q.get("question")]
-            self.questions[str(e.get("qid"))] = {"qid": str(e.get("qid")), "questions": qs, "ts": ts, "state": "open"}
+            where = "terminal" if e.get("where") == "terminal" else "open"
+            self.questions[str(e.get("qid"))] = {"qid": str(e.get("qid")), "questions": qs, "ts": ts, "state": where,
+                                                 "tool_use_id": e.get("tool_use_id"), "main": not aid}
             self.questions = dict(list(self.questions.items())[-20:])
             first = qs[0]["question"] if qs else "a question"
-            self._say("assistant", f"I have a question for you: {first}" + (f" (+{len(qs) - 1} more)" if len(qs) > 1 else ""),
+            more = f" (+{len(qs) - 1} more)" if len(qs) > 1 else ""
+            self._say("assistant", f"I have a question for you{' in the terminal' if where == 'terminal' else ''}: {first}{more}",
                       ts, kind="question")
             return {"questions", "feed"}
         if ev == "question_done":
             q = self.questions.get(str(e.get("qid")))
-            if not q or q["state"] == "done":
+            if not q or q["state"] not in ("open", "answering"):   # "answering": the page just sent its reply
                 return set()
-            q["state"] = "done"
-            if e.get("via") == "terminal":
+            if e.get("via") == "terminal":   # still waiting, now in the terminal: keep showing it
+                q["state"] = "terminal"
                 why = {"terminal": "as you asked", "page closed": "because the page was closed",
                        "timeout": "after waiting 5 minutes"}.get(e.get("reason"), "")
                 self._say("system", f"The question moved to the terminal {why}. Answer it there.".replace("  ", " "), ts, kind="note")
+            else:
+                q["state"] = "done"
             return {"questions", "feed"}
+        if ev == "question_answered":
+            hit = [q for q in self.questions.values() if q["state"] != "done" and q.get("tool_use_id") == e.get("tool_use_id")]
+            for q in hit:
+                q["state"] = "done"
+            return {"questions"} if hit else set()
         if ev == "spawn" and not aid:
             self.pending.append({"id": e.get("id"), "type": short_type(e.get("spawn_type")),
                                  "desc": e.get("desc") or "", "ts": ts})
@@ -304,9 +318,16 @@ class Model:
             p["state"] = state
         return {"perms"} if open_ else set()
 
+    def _close_terminal_questions(self, ts: float) -> bool:
+        """The main session did something new, so its question in the terminal is no longer waiting."""
+        hit = [q for q in self.questions.values() if q["state"] == "terminal" and q.get("main") and ts > q["ts"] + 0.5]
+        for q in hit:
+            q["state"] = "done"
+        return bool(hit)
+
     def questions_payload(self) -> list[dict]:
         with self.lock:
-            return [dict(q) for q in self.questions.values() if q["state"] == "open"]
+            return [dict(q) for q in self.questions.values() if q["state"] in ("open", "terminal")]
 
     def open_question(self, qid: str) -> dict | None:
         with self.lock:
@@ -475,13 +496,42 @@ class Hub:
                     self.clients.discard(q)  # a stuck tab; it reconnects and gets a fresh snapshot
 
 
+_presence_lock = threading.Lock()
+
+
+def touch_presence(root: Path, visible: bool) -> None:
+    """presence.json: when a page was last open ("seen") and last on screen ("visible")."""
+    f = ui_dir(root) / "presence.json"
+    with _presence_lock:
+        try:
+            cur = json.loads(f.read_text())
+        except Exception:
+            cur = {}
+        now = time.time()
+        cur.update(seen=now, **({"visible": now} if visible else {}))
+        tmp = f.with_suffix(".tmp")
+        tmp.write_text(json.dumps(cur))
+        os.replace(tmp, f)
+
+
+def plugin_version() -> str:
+    try:
+        return json.loads((Path(__file__).resolve().parents[1] / ".claude-plugin" / "plugin.json").read_text())["version"]
+    except Exception:
+        return "?"
+
+
 def watch(root: Path, model: Model, hub: Hub, stop: threading.Event) -> None:
     sp, ep = root / ".build-my-app" / "state.json", events_path(root)
     state_mtime, offset, last_pressure, last_push, last_bridge = 0.0, 0, None, 0.0, None
     last_previews, last_viewer = None, time.time()
+    last_seen = 0.0
     while not stop.is_set():
         if hub.clients:
             last_viewer = time.time()
+            if last_viewer - last_seen > 10:
+                last_seen = last_viewer
+                touch_presence(root, visible=False)
             if time.time() - _previews["at"] > PREVIEW_EVERY:
                 pv = previews(root, fresh=True)
                 if pv != last_previews:
@@ -684,16 +734,7 @@ def make_handler(root: Path, port: int, token: str, model: Model, hub: Hub):
 
         def _presence(self, body: dict):
             """The page says it is open (and whether it is visible); the question hook reads this."""
-            f = ui_dir(root) / "presence.json"
-            try:
-                cur = json.loads(f.read_text())
-            except Exception:
-                cur = {}
-            now = time.time()
-            cur.update(seen=now, **({"visible": now} if body.get("visible") else {}))
-            tmp = f.with_suffix(".tmp")
-            tmp.write_text(json.dumps(cur))
-            os.replace(tmp, f)
+            touch_presence(root, visible=bool(body.get("visible")))
             self._ok({"ok": True})
 
         def _answer(self, body: dict):
@@ -782,7 +823,7 @@ def serve(root: Path, port: int, token: str) -> None:
     httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(root, port, token, model, hub))
     httpd.daemon_threads = True
     info = {"pid": os.getpid(), "port": port, "token": token, "url": f"http://127.0.0.1:{port}/?token={token}",
-            "started": bma_state.now()}
+            "started": bma_state.now(), "version": plugin_version()}
     ip = ui_info_path(root)
     ip.write_text(json.dumps(info, indent=2) + "\n")
     os.chmod(ip, 0o600)
@@ -823,6 +864,12 @@ def cmd_start(a) -> None:
     if not (root / ".build-my-app" / "state.json").exists():
         sys.exit("No build-my-app state here. Run `/build-my-app:start` first.")
     info = read_info(root)
+    if info and info.get("version") != plugin_version():
+        # An older server keeps running the code it started with; the page it serves is newer.
+        print(f"Restarting the UI server: it runs {('version ' + info['version']) if info.get('version') else 'an older version'}, "
+              f"the plugin is {plugin_version()}. Open the new link below; the old one stops working.")
+        cmd_stop(a)
+        info = None
     if info:
         print(f"Already running: {info['url']}")
     else:
