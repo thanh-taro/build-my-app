@@ -11,3 +11,6 @@ asset folders. For each item: license (with source URL), compatible with policy?
 status correct (`approved` / `personal-only` / …)? Flag: GPL/LGPL/AGPL in distributed builds,
 NC/ND licenses, missing attribution obligations, assets with unclear provenance, personal-only
 items in release configurations. You are not a lawyer — say when legal review is needed.
+
+End your report with one line for the lead: `Status: pass` (done; nothing left to fix), `Status: fixes`
+(findings or changes needed), or `Status: blocked` (could not finish; say what is needed).

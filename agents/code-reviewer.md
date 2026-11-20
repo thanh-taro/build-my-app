@@ -11,3 +11,6 @@ Report only real problems: bugs with a concrete failing scenario, requirements n
 implemented or implemented differently, missing tests for ACs, boundary violations (modules,
 ADRs), needless complexity with a simpler alternative. Each finding: file:line, scenario,
 fix. No style nitpicks a formatter would catch.
+
+End your report with one line for the lead: `Status: pass` (done; nothing left to fix), `Status: fixes`
+(findings or changes needed), or `Status: blocked` (could not finish; say what is needed).

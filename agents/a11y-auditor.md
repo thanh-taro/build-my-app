@@ -10,3 +10,6 @@ Using screenshots, accessibility tree dumps (when the stack provides them), toke
 accessibility NFR: check labels/roles/values, contrast (WCAG AA), touch target size, larger
 text support, reading order, gesture alternatives, motion sensitivity. Each finding: screen
 or component, criterion, fix. Separate automated results from items needing a manual pass.
+
+End your report with one line for the lead: `Status: pass` (done; nothing left to fix), `Status: fixes`
+(findings or changes needed), or `Status: blocked` (could not finish; say what is needed).

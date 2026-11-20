@@ -217,8 +217,11 @@ class Model:
                 return set()
             a = self._agent(aid, e.get("type"), ts)
             result = clip((e.get("text") or "").split("\n")[0], 200)
-            a.update(status="done", result=result, now=result or "Finished", updated=ts, ended=ts)
-            self._say(a["type"], result or "Finished.", ts, kind="done", agent=aid)
+            reported = e.get("reported", bool(result))
+            oc = e.get("outcome") if e.get("outcome") in ("pass", "fixes", "blocked") else None
+            a.update(status="done", result=result, now=result or "Finished", updated=ts, ended=ts,
+                     outcome=oc, reported=reported)
+            self._say(a["type"], result or "Finished.", ts, kind="done", agent=aid, outcome=oc)
             self._prune()
             return {"agents", "feed"}
         if ev in ("heavy_wait", "heavy_run", "heavy_done"):

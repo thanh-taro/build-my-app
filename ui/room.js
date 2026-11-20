@@ -7,7 +7,7 @@
     wood: '#e3b58f', leg: '#c99b8d', counter: '#b48ab6', counterTop: '#fbeee9', laptop: '#7a6a80', screenOff: '#a396a8',
     accent: '#ef8354', ok: '#3fae7a', bad: '#e0605e', wait: '#a08f99', bench: '#c7a3b9', plant: '#6cbf8f', pot: '#e6a07c',
     board: '#5b4a63', boardFg: '#fff3ef', boardDim: '#8e7a95', door: '#c99b8d', eye: '#3b2a33', dark: '#4a3a46',
-    gold: '#f2c14e', white: '#fffaf7', rack: '#6e5c76', hat: '#ffd56b',
+    gold: '#f2c14e', white: '#fffaf7', rack: '#6e5c76', hat: '#ffd56b', amber: '#e8a33d',
   };
   Object.assign(P, ((window.BMA_PALETTES || {})[window.BMA_PALETTE] || {}).room);  // palettes.js
   const DESKS = [{ x: -2.4, z: -0.6 }, { x: 0.2, z: -0.6 }, { x: 2.8, z: -0.6 }, { x: -2.4, z: -2.8 }, { x: 0.2, z: -2.8 }, { x: 2.8, z: -2.8 }];
@@ -17,16 +17,27 @@
   const DOOR = { x: -5.4, z: -0.5, y: 0 };
   const FRONT = { x: 0.6, z: 2.0 };
   const AISLE_X = -4.4;
+  // Reports: a finished agent walks to the front desk and hands its report to the lead.
+  // On the visitor's side of the counter, facing the lead: spot 0 hands over, the rest wait in line.
+  const HAND = [{ x: FRONT.x - 0.45, z: 3.45 }, { x: FRONT.x - 1.25, z: 3.65 }, { x: FRONT.x - 2.0, z: 3.85 }];
+  const AROUND_X = FRONT.x - 2.15;       // walk past the left end of the counter
+  const GAPS = [-3.7, -1.1, 1.5, 3.9];   // walkways between the desks
+  const TRAY = { x: FRONT.x + 0.42, y: 0.885, z: 2.46 };
+  const TRAY_MAX = 5, TRAY_KEEP = 600;   // folders on the counter; each fades after 10 minutes
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const now = () => performance.now() / 1000;
 
   let THREE, renderer, scene, camera, stage, canvas, layer, avatarRoot, refs = {};
   const figs = new Map();       // agent id → figure
   const deskUse = new Map();    // slot key → agent id
-  let lead = { text: 'Hi! I\'ll show who is working on what.', at: now(), fig: null, bubble: null, pinned: false };
+  let lead = { text: 'Hi! I\'ll show who is working on what.', at: now(), fig: null, bubble: null, pinned: false,
+    rot: 0, faceAt: null, faceTo: 0, nodAt: null };
   const LEAD_SAYS_FOR = 6;  // seconds the lead's bubble shows its text; then just the name, like the agents
   const orbit = { theta: 0.62, phi: 0.6, r: 17, target: null };
   let status = null, heavyRunning = 0;
+  const reports = [];   // figures walking to the desk or waiting in line, in order
+  const tray = [];      // folders on the counter: { g, aid, at }
+  let flying = null;    // the folder on its way from an agent to the tray
 
   // ---------- geometry helpers ----------
   function geo(kind, d) {
@@ -166,6 +177,8 @@
         x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('Ask me', 220, 54);
       }) }));
     add(at(sign, FRONT.x - 0.55, 0.4, 2.925));
+    add(at(part('box', [0.44, 0.025, 0.34], P.dark), TRAY.x, TRAY.y - 0.012, TRAY.z));   // the report tray
+    add(at(part('box', [0.44, 0.06, 0.02], P.dark), TRAY.x, TRAY.y + 0.02, TRAY.z - 0.16));
     add(at(part('box', [0.55, 0.1, 2.7], P.bench), -5.25, 0.37, 2.2));
     add(at(part('box', [0.5, 0.32, 0.08], P.leg), -5.25, 0.16, 1.0));
     add(at(part('box', [0.5, 0.32, 0.08], P.leg), -5.25, 0.16, 3.4));
@@ -332,7 +345,7 @@
         if (a.status === 'done') return;   // finished already: it shows in the roster, not the room
         const av = buildAvatar(a.type);
         f = { id: a.id, a, ...av, pos: { ...DOOR }, path: [], rot: 0, rest: 0, place: null, pop: initial ? 1 : 0,
-          saidAt: initial ? -99 : t, pinned: false, phase: Math.random() * 6, doneAt: null, leaving: false };
+          saidAt: initial ? -99 : t, pinned: false, phase: Math.random() * 6, doneAt: null, leaving: false, report: null };
         av.g.userData.aid = a.id;
         avatarRoot.add(av.g);
         figs.set(a.id, f);
@@ -342,12 +355,128 @@
       }
       if (f.leaving) return;
       if (f.a.status !== a.status || f.a.now !== a.now) f.saidAt = t;
-      if (a.status === 'done' && f.a.status !== 'done') f.doneAt = t;
+      const finished = a.status === 'done' && f.a.status !== 'done';
       f.a = a;
+      if (finished) {
+        if (a.reported) f.report = { stage: 'standup', t, slot: -1 };   // carry the report to the lead
+        else f.doneAt = t;                                              // nothing to hand over: just leave
+      }
+      if (f.report) return;
       const want = a.status === 'queued' ? 'seat' : 'desk';
       if (f.place && (want === 'seat') !== /^[sq]/.test(f.place)) goTo(f, claim(want, a.id));
     });
-    figs.forEach((f) => { if (!seen.has(f.id)) leave(f); });
+    figs.forEach((f) => { if (!seen.has(f.id) && !f.report) leave(f); });
+  }
+
+  // ---------- reports ----------
+  const OUTCOME = { pass: 'ok', fixes: 'amber', blocked: 'bad' };
+  function buildFolder(color, outcome) {
+    const g = new THREE.Group(); const add = (m) => (g.add(m), m);
+    add(part('box', [0.3, 0.026, 0.22], color));
+    add(at(part('box', [0.27, 0.012, 0.19], P.white, { noCast: true }), 0.01, 0.017, 0));
+    add(at(part('box', [0.08, 0.03, 0.05], lighten(color, 0.25)), -0.1, 0.006, -0.125));   // tab
+    const mark = OUTCOME[outcome];
+    if (mark === 'ok') {      // a check
+      add(at(part('box', [0.03, 0.02, 0.06], P.ok, { noCast: true }), 0.04, 0.03, 0.02, 0, 0.8, 0));
+      add(at(part('box', [0.03, 0.02, 0.12], P.ok, { noCast: true }), 0.09, 0.03, -0.005, 0, -0.6, 0));
+    } else if (mark === 'bad') {   // a cross
+      add(at(part('box', [0.03, 0.02, 0.13], P.bad, { noCast: true }), 0.07, 0.03, 0, 0, 0.785, 0));
+      add(at(part('box', [0.03, 0.02, 0.13], P.bad, { noCast: true }), 0.07, 0.03, 0, 0, -0.785, 0));
+    } else if (mark) {             // a dot: needs fixes
+      add(at(part('cyl', [0.045, 0.045, 0.02], P[mark], { noCast: true }), 0.07, 0.03, 0));
+    }
+    return g;
+  }
+  function trayPos(i) { return { x: TRAY.x + (i % 2) * 0.02, y: TRAY.y + 0.03 + i * 0.03, z: TRAY.z + (i % 2) * 0.015 }; }
+  function toTray(folder, aid) {
+    if (folder.parent !== scene) scene.attach(folder);
+    while (tray.length >= TRAY_MAX) { const old = tray.shift(); scene.remove(old.g); dispose(old.g); }
+    const p = trayPos(tray.length);
+    folder.position.set(p.x, p.y, p.z); folder.rotation.set(0, (Math.random() - 0.5) * 0.3, 0); folder.scale.setScalar(1);
+    folder.userData.report = aid;
+    tray.forEach((it, i) => { const q = trayPos(i); it.g.position.set(q.x, q.y, q.z); });
+    tray.push({ g: folder, aid, at: now() });
+  }
+  function leadHears(f) {
+    const res = f.a.result || 'Finished.';
+    const tag = { pass: '', fixes: 'needs fixes: ', blocked: 'is blocked: ' }[f.a.outcome] || '';
+    setLead(tag ? `${f.a.type} ${tag}${res}` : `${f.a.type}: ${res}`);
+    lead.nodAt = now();
+  }
+  function reportPath(from, to) {
+    if (from.z > 3.0) return [{ x: to.x, z: to.z, y: 0 }];      // already in line: step forward
+    const out = [];
+    if (from.z < -0.15) {                                        // at a desk: out through the nearest walkway
+      const gx = GAPS.reduce((b, g) => (Math.abs(g - from.x) < Math.abs(b - from.x) ? g : b), GAPS[0]);
+      out.push({ x: gx, z: from.z, y: 0 }, { x: gx, z: 1.5, y: 0 });
+    }
+    out.push({ x: AROUND_X, z: 1.5, y: 0 }, { x: AROUND_X, z: to.z, y: 0 }, { x: to.x, z: to.z, y: 0 });
+    return out;
+  }
+  function reportLabel(a) { return 'Report: ' + (a.desc || a.result || 'done'); }
+  function stepReport(f, t) {
+    const r = f.report;
+    if (r.stage === 'gone') return;
+    if (t - r.t > 30 && r.stage !== 'standup') { finishReport(f, true); return; }   // safety: never stall the room
+    if (r.stage === 'standup') {
+      if (t - r.t < (reduced ? 1.2 : 1.0)) return;
+      f.folder = buildFolder(window.bmaCast(f.a.type).color, f.a.outcome);
+      if (reduced || reports.length >= HAND.length) {   // no walking: the folder appears in the tray
+        toTray(f.folder, f.id); f.folder = null; leadHears(f);
+        r.stage = 'gone'; release(f.id);
+        if (reduced) f.gone = true; else leave(f);
+        return;
+      }
+      at(f.folder, 0.27, 0.62, 0.17, -1.1, 0, 0.15); f.g.add(f.folder);
+      release(f.id); f.place = 'report'; f.speed = 2.6;
+      reports.push(f); r.stage = 'walk'; r.t = t; f.saidAt = t;
+    }
+    const i = reports.indexOf(f);
+    if (r.stage === 'walk') {
+      if (i !== r.slot) {
+        r.slot = i; const to = HAND[i];
+        f.path = reportPath(f.pos, to);
+        f.rest = Math.atan2(FRONT.x - to.x, FRONT.z - to.z);
+      }
+      if (i === 0 && !f.path.length && Math.abs(lerpAngle(f.rot, f.rest, 1) - f.rot) < 0.3) {   // at the desk, facing the lead: hand it over
+        r.stage = 'give'; r.t = t;
+        const from = new THREE.Vector3(); f.folder.getWorldPosition(from);
+        scene.attach(f.folder);
+        const to = trayPos(Math.min(tray.length, TRAY_MAX - 1));
+        flying = { g: f.folder, from, to, t0: t, f };
+        f.folder = null;
+        lead.faceAt = t;
+        lead.faceTo = Math.atan2(f.pos.x - FRONT.x, f.pos.z - FRONT.z);
+      }
+    } else if (r.stage === 'give' && !flying) {
+      r.stage = 'thanks'; r.t = t;
+    } else if (r.stage === 'thanks' && t - r.t > 0.7) {
+      finishReport(f, false);
+    }
+  }
+  function finishReport(f, abort) {
+    const i = reports.indexOf(f); if (i >= 0) reports.splice(i, 1);
+    if (abort && f.folder) { toTray(f.folder, f.id); f.folder = null; leadHears(f); }
+    if (flying && flying.f === f) { toTray(flying.g, f.id); flying = null; leadHears(f); }
+    f.report.stage = 'gone'; f.speed = 0;
+    leave(f);
+  }
+  function stepFlying(t) {
+    if (!flying) return;
+    const k = Math.min(1, (t - flying.t0) / 0.75), e = k * k * (3 - 2 * k), { g, from, to } = flying;
+    g.position.set(from.x + (to.x - from.x) * e, from.y + (to.y - from.y) * e + Math.sin(Math.PI * k) * 0.45, from.z + (to.z - from.z) * e);
+    g.rotation.x = -1.1 * (1 - e); g.rotation.z = 0.15 * (1 - e);
+    if (k >= 1) { const f = flying.f; flying = null; toTray(g, f.id); leadHears(f); }
+  }
+  function stepTray(t) {
+    for (let i = tray.length - 1; i >= 0; i--) {
+      const age = t - tray[i].at;
+      if (age > TRAY_KEEP) {
+        const sc = Math.max(0, 1 - (age - TRAY_KEEP));
+        tray[i].g.scale.setScalar(Math.max(0.01, sc));
+        if (sc <= 0) { scene.remove(tray[i].g); dispose(tray[i].g); tray.splice(i, 1); tray.forEach((it, j) => { const q = trayPos(j); it.g.position.set(q.x, q.y, q.z); }); }
+      }
+    }
   }
   function leave(f) {
     if (f.leaving) return;
@@ -403,9 +532,10 @@
     figs.forEach((f) => {
       if (f.pop < 1) { f.pop = Math.min(1, f.pop + dt * 2.5); moving = true; }
       if (f.doneAt && !f.leaving && t - f.doneAt > 6) leave(f);
+      if (f.report) { stepReport(f, t); if (f.gone) return; }
       if (f.path.length) {
         moving = true;
-        const wp = f.path[0], dx = wp.x - f.pos.x, dz = wp.z - f.pos.z, dist = Math.hypot(dx, dz), sp = 1.7 * dt;
+        const wp = f.path[0], dx = wp.x - f.pos.x, dz = wp.z - f.pos.z, dist = Math.hypot(dx, dz), sp = (f.speed || 1.7) * dt;
         if (dist <= sp) { f.pos.x = wp.x; f.pos.z = wp.z; f.path.shift(); }
         else { f.pos.x += dx / dist * sp; f.pos.z += dz / dist * sp; f.rot = lerpAngle(f.rot, Math.atan2(dx, dz), 0.2); }
         f.pos.y += (wp.y - f.pos.y) * Math.min(1, dt * 6);
@@ -433,11 +563,12 @@
       const pr = project(f.pos.x, f.pos.y + 1.95, f.pos.z);
       f.bubble.style.opacity = pr.behind || f.leaving ? 0 : 1;
       place(f.bubble, pr);
-      const isOpen = f.pinned || open.includes(f);
+      const handing = f.report && (f.report.stage === 'give' || f.report.stage === 'thanks');
+      const isOpen = !handing && (f.pinned || open.includes(f) || (f.report && f.report.stage === 'walk'));
       f.bubble.classList.toggle('open', isOpen);
       f.bubble.style.zIndex = isOpen ? 3 : 1;
       f.bubble.querySelector('.dot').style.background = walking ? P.wait : stateColor(s);
-      const say = (s === 'done' && f.a.result) || f.a.now || f.a.desc || '';
+      const say = (f.report && f.report.stage === 'walk') ? reportLabel(f.a) : (s === 'done' && f.a.result) || f.a.now || f.a.desc || '';
       const el = f.bubble.querySelector('.say'); if (el.textContent !== say) el.textContent = say;
     });
     figs.forEach((f, id) => {
@@ -449,11 +580,19 @@
       m.material.color.set(!s ? P.screenOff : s === 'stuck' ? ((Math.floor(t * 3) % 2) ? P.bad : P.screenOff) : s === 'done' ? P.ok : s === 'queued' ? P.screenOff : P.accent);
     });
     refs.rack.forEach((m, i) => m.material.color.set(i < heavyRunning ? P.ok : P.screenOff));
+    stepFlying(t); stepTray(t);
+    if (flying) moving = true;
 
     // assistant at the front desk
     const hop = Math.max(0, 1 - (t - lead.at) * 3) * 0.08;
     lead.fig.g.position.set(FRONT.x, Math.abs(Math.sin(anim * 1.6)) * 0.015 + hop, FRONT.z);
-    lead.fig.g.rotation.y = Math.sin(anim * 0.7) * 0.15;
+    // turn toward an agent handing over a report, then back; nod when the folder lands
+    const facing = lead.faceAt != null && t - lead.faceAt < 2.4 && !reduced;
+    lead.rot = lerpAngle(lead.rot || 0, facing ? lead.faceTo * 0.75 : Math.sin(anim * 0.7) * 0.15, facing ? 0.12 : 0.06);
+    lead.fig.g.rotation.y = lead.rot;
+    const nod = lead.nodAt != null && !reduced ? Math.max(0, 1 - (t - lead.nodAt) / 0.6) : 0;
+    lead.fig.g.rotation.x = Math.sin(nod * Math.PI) * 0.16;
+    if (facing || nod > 0) moving = true;
     const lp = project(FRONT.x, 2.05, FRONT.z);
     place(lead.bubble, lp);
     const ls = lead.bubble.querySelector('.say'); if (ls.textContent !== lead.text) ls.textContent = lead.text;
@@ -486,6 +625,12 @@
     ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
     if (refs.tv && preview && preview.live && ray.intersectObject(refs.tv).length) {
       if (window.BmaRoom.onPreview) window.BmaRoom.onPreview(preview);
+      return;
+    }
+    const fh = tray.length && ray.intersectObjects(tray.map((it) => it.g), true)[0];
+    if (fh) {
+      let o = fh.object; while (o && !o.userData.report) o = o.parent;
+      if (o && window.BmaRoom.onReport) window.BmaRoom.onReport(o.userData.report);
       return;
     }
     if (lead.fig && ray.intersectObject(lead.fig.g, true).length) { lead.pinned = !lead.pinned; return; }
@@ -532,5 +677,5 @@
     return true;
   }
 
-  window.BmaRoom = { init, setAgents, setLead, setStatus, setHeavy, setPreview, onPreview: null };
+  window.BmaRoom = { init, setAgents, setLead, setStatus, setHeavy, setPreview, onPreview: null, onReport: null };
 })();

@@ -244,3 +244,28 @@ sleep 1
 python3 "$P/scripts/bma_preview.py" list
 python3 "$P/scripts/bma_preview.py" remove --all
 rm -f shot.png
+
+echo "== 12. agent reports: outcome for the hand-off at the front desk"
+python3 "$P/scripts/bma_ui.py" start --port 7399 >/dev/null
+python3 - "$P" <<'PY'
+import importlib.util, json, os, subprocess, sys, time, urllib.request
+P = sys.argv[1]
+spec = importlib.util.spec_from_file_location("ue", f"{P}/hooks/ui_events.py"); ue = importlib.util.module_from_spec(spec); spec.loader.exec_module(ue)
+cases = [("F-003 is green: 14 tests pass, 0 failed.", "pass"), ("Found 3 issues in the diff.", "fixes"),
+         ("Tests still fail after 3 attempts.", "blocked"), ("Inject a fixed clock.", None),
+         ("All good, mostly.\n**Status:** fixes", "fixes"), ("## Report\nStatus: blocked\nNeed the API key.", "blocked")]
+print("outcomes:", sum(ue.outcome(t) == w for t, w in cases), "/", len(cases))
+print("summary skips heading and status:", repr(ue.summary("## Report\nStatus: blocked\nNeed the API key.")))
+hook = lambda d: subprocess.run([sys.executable, f"{P}/hooks/ui_events.py"], input=json.dumps({**d, "cwd": os.getcwd()}), text=True, env={**os.environ, "CLAUDE_PROJECT_DIR": os.getcwd()})
+for aid, msg in (("r1", "Review done; 2 findings in StreakEngine.\nStatus: fixes"), ("r2", "")):
+    hook({"hook_event_name": "SubagentStart", "agent_id": aid, "agent_type": "build-my-app:code-reviewer"})
+    hook({"hook_event_name": "SubagentStop", "agent_id": aid, "agent_type": "build-my-app:code-reviewer", "last_assistant_message": msg})
+time.sleep(1.5)
+i = json.load(open(".build-my-app/tmp/ui/ui.json"))
+snap = json.load(urllib.request.urlopen(f"http://127.0.0.1:{i['port']}/api/snapshot?token={i['token']}"))
+ag = {a["id"]: a for a in snap["agents"]}
+print("r1:", ag["r1"]["status"], ag["r1"]["outcome"], ag["r1"]["reported"], repr(ag["r1"]["result"]))
+print("r2 (no report):", ag["r2"]["status"], ag["r2"]["outcome"], ag["r2"]["reported"])
+print("feed badge:", [f.get("outcome") for f in snap["feed"] if f.get("agent") == "r1"])
+PY
+python3 "$P/scripts/bma_ui.py" stop

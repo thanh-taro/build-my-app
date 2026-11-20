@@ -13,3 +13,6 @@ For each NFR in scope: run the measurement method from `specs/50-quality/nfr.md`
 stack's tools; report value vs. target, environment (device/simulator, build type), and
 confidence. For misses: the likely cause with evidence and the smallest fix. Flag
 measurements that need a real device as manual items.
+
+End your report with one line for the lead: `Status: pass` (done; nothing left to fix), `Status: fixes`
+(findings or changes needed), or `Status: blocked` (could not finish; say what is needed).

@@ -11,3 +11,6 @@ and metadata) with `python3 tools/spec_query.py context <SCR/CMP/FLOW ID> --full
 Report: missing states/variants; requirements with no visible UI; text not matching a COPY
 ID; raw values instead of tokens; broken or missing flow connections; naming that violates
 `adapters/design.md`. Output a table: frame · finding · spec ID · severity.
+
+End your report with one line for the lead: `Status: pass` (done; nothing left to fix), `Status: fixes`
+(findings or changes needed), or `Status: blocked` (could not finish; say what is needed).
