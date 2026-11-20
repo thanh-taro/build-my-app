@@ -164,13 +164,15 @@ Phases 2 and 3 run in parallel after gate 1. Shared rules live in the `core` ski
 Opens a local page (127.0.0.1 only, with a random access token in the link) that shows the
 run as a small 3D service center:
 
-- **Front desk:** the conversation, from both sides. Type in the page or in the terminal; both
-  show up here, with Claude's replies and short notes when it hands out work or an agent finishes.
+- **Front desk** (along the bottom): the conversation, from both sides. Type in the page or in
+  the terminal; both show up here, with Claude's replies and short notes when it hands out work
+  or an agent finishes. Cards for things that need you sit beside it.
 - **Back office:** each subagent appears as a clay figure when it starts. It walks in, works at
   a desk and says what it is doing, waits on the bench while a heavy build or test run is
   queued, shows a red mark after three failed heavy runs in a row, and leaves when it is done.
-  Each agent type has its own color and prop. A list under the room shows the same information.
-- **Progress:** phases and gates, open decisions, review loops, the machine budget and memory
+  Each agent type has its own color and prop. The Agents list in the left sidebar shows the
+  same information.
+- **Progress** (left sidebar, under Agents): phases and gates, open decisions, review loops, the machine budget and memory
   pressure, and the environment recorded in setup.
 
 **Chatting from the page** uses Claude Code
@@ -200,6 +202,11 @@ claude.ai Team or Enterprise must enable channels first (`channelsEnabled`).
 - **Gates and decisions.** A phase waiting at its gate, and each open decision with its
   options (the recommended one marked), get buttons that put your answer in the chat box to
   check and send.
+- **Claude's questions.** When Claude asks a multiple-choice question while you have the page
+  open (and looked at it in the last minute), the question comes to the page instead of the
+  terminal: pick options, or type your own answer. *Answer in the terminal* moves it back, and
+  so does closing the page or waiting 5 minutes. This works without the channel flag. A hook
+  runs before the terminal dialog, so the question is in one place at a time, never both.
 
 The UI adds no load when it is off. Its hooks run in the background and do nothing unless the
 server is running. The chat bridge (`bma_channel.py`, an MCP server the plugin declares) starts
@@ -208,9 +215,14 @@ the channel flag, so those sessions never take messages meant for another. The 3
 three.js from jsDelivr (pinned, with an integrity hash); offline, the page falls back to the
 list. `/build-my-app:ui stop` closes it.
 
+The **Colors** menu in the header switches palettes (Mint, Sky, Slate, or the warm Clay) for the
+page and the room; each browser remembers its choice, and `?palette=sky` in the link forces one.
+
 To see it without a real run, play the demo. It builds a throwaway project in phase 4 and replays a
 short story through the same hooks: two features built in parallel, the build queue, a code
-review, an accessibility audit, and a feature that gets stuck and rescued.
+review, an accessibility audit, and a feature that gets stuck and rescued. It also stands in for
+the Claude Code session, so you can try the interactive parts: chat (canned replies), a tool
+approval and a hard stop, and a question from Claude.
 
 ```bash
 python3 scripts/bma_ui_demo.py --open        # loops until Ctrl-C; --once, --speed 2
@@ -237,7 +249,7 @@ python3 scripts/bma_ui_demo.py --open        # loops until Ctrl-C; --once, --spe
 
 ## Status
 
-v0.5.1 — skeleton. Web UI (`/build-my-app:ui`) with a live agent room, chat, and approvals from the page. Builds and tests stay within a
+v0.6.0 — skeleton. Web UI (`/build-my-app:ui`) with a live agent room, chat, approvals, and Claude's questions in the page. Builds and tests stay within a
 machine resource budget. Phases 0–1 and the core protocols are fully specified; phases 2–8 have
 complete step lists but are untested end to end. See `ROADMAP.md`.
 

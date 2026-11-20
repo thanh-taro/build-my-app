@@ -14,3 +14,4 @@
       transcript mirror as a fallback when Claude answers only in the terminal).
 - [x] Web UI v0.5: answer decisions and approve gates and tool prompts from the page (permission relay);
       hard stops stay terminal-confirmed.
+- [x] Web UI v0.6: answer Claude's multiple-choice questions (AskUserQuestion) in the page.

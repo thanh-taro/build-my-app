@@ -167,3 +167,35 @@ print("verdicts sent (hard-stop allow written past the server must not appear):"
 br.stdin.close(); br.wait(5)
 PY
 python3 "$P/scripts/bma_ui.py" stop
+
+echo "== 10. Claude's questions answered from the page (AskUserQuestion hook)"
+python3 "$P/scripts/bma_ui.py" start --port 7399 >/dev/null
+python3 - "$P" <<'PY'
+import json, os, subprocess, sys, time, urllib.request, urllib.error
+P = sys.argv[1]
+i = json.load(open(".build-my-app/tmp/ui/ui.json")); base = f"http://127.0.0.1:{i['port']}"
+def post(path, body):
+    try:
+        return urllib.request.urlopen(urllib.request.Request(base + path, data=json.dumps(body).encode(),
+                                      headers={"Content-Type": "application/json", "X-Token": i["token"]})).status
+    except urllib.error.HTTPError as e:
+        return e.code
+snap = lambda: json.load(urllib.request.urlopen(f"{base}/api/snapshot?token={i['token']}"))
+Q = json.dumps({"hook_event_name": "PreToolUse", "tool_name": "AskUserQuestion", "tool_input": {"questions": [
+    {"question": "Which?", "header": "Pick", "options": [{"label": "A"}, {"label": "B"}], "multiSelect": False}]}})
+hook = lambda: subprocess.Popen([sys.executable, f"{P}/hooks/ask_web.py"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+h = hook(); out = h.communicate(Q, timeout=10)[0]
+print("page not open → stays in the terminal:", out == "")
+post("/api/presence", {"visible": True})
+h = hook(); h.stdin.write(Q); h.stdin.close(); time.sleep(1.5)
+qid = snap()["questions"][0]["qid"]
+print("incomplete answer →", post("/api/answer", {"qid": qid, "answers": {}}), "(expect 400)")
+print("answer →", post("/api/answer", {"qid": qid, "answers": {"Which?": "B"}}))
+o = json.loads(h.stdout.read())["hookSpecificOutput"]
+print("hook allows with answers:", o["permissionDecision"], o["updatedInput"]["answers"])
+h = hook(); h.stdin.write(Q); h.stdin.close(); time.sleep(1.5)
+qid = snap()["questions"][0]["qid"]
+print("move to terminal →", post("/api/answer", {"qid": qid, "terminal": True}), "| hook output empty:", h.stdout.read() == "")
+print("answer after it moved →", post("/api/answer", {"qid": qid, "answers": {"Which?": "A"}}), "(expect 410)")
+PY
+python3 "$P/scripts/bma_ui.py" stop

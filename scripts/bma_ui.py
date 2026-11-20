@@ -88,6 +88,7 @@ class Model:
         self.status_fresh: list[dict] = []     # chat status changes not yet pushed
         self.last_activity = 0.0               # last sign of Claude working (any hook event)
         self.perms: dict[str, dict] = {}       # relayed tool-approval prompts: request_id → card
+        self.questions: dict[str, dict] = {}   # AskUserQuestion calls waiting for the page: qid → card
         self.last_interim = ""
 
     def take_status(self) -> list[dict]:
@@ -150,6 +151,24 @@ class Model:
             return set()
         if ev in ("permission", "permission_answer", "permission_refused", "tool_done"):
             return self._permission(ev, e, ts)
+        if ev == "question":
+            qs = [q for q in (e.get("questions") or []) if isinstance(q, dict) and q.get("question")]
+            self.questions[str(e.get("qid"))] = {"qid": str(e.get("qid")), "questions": qs, "ts": ts, "state": "open"}
+            self.questions = dict(list(self.questions.items())[-20:])
+            first = qs[0]["question"] if qs else "a question"
+            self._say("assistant", f"I have a question for you: {first}" + (f" (+{len(qs) - 1} more)" if len(qs) > 1 else ""),
+                      ts, kind="question")
+            return {"questions", "feed"}
+        if ev == "question_done":
+            q = self.questions.get(str(e.get("qid")))
+            if not q or q["state"] == "done":
+                return set()
+            q["state"] = "done"
+            if e.get("via") == "terminal":
+                why = {"terminal": "as you asked", "page closed": "because the page was closed",
+                       "timeout": "after waiting 5 minutes"}.get(e.get("reason"), "")
+                self._say("system", f"The question moved to the terminal {why}. Answer it there.".replace("  ", " "), ts, kind="note")
+            return {"questions", "feed"}
         if ev == "spawn" and not aid:
             self.pending.append({"id": e.get("id"), "type": short_type(e.get("spawn_type")),
                                  "desc": e.get("desc") or "", "ts": ts})
@@ -275,6 +294,30 @@ class Model:
             p["state"] = state
         return {"perms"} if open_ else set()
 
+    def questions_payload(self) -> list[dict]:
+        with self.lock:
+            return [dict(q) for q in self.questions.values() if q["state"] == "open"]
+
+    def open_question(self, qid: str) -> dict | None:
+        with self.lock:
+            q = self.questions.get(qid)
+            return dict(q) if q and q["state"] == "open" else None
+
+    def claim(self, qid: str) -> bool:
+        """Close a question as the page answers it, so a second answer (another tab, a late click) gets 410."""
+        with self.lock:
+            q = self.questions.get(qid)
+            if not q or q["state"] != "open":
+                return False
+            q["state"] = "answering"
+            return True
+
+    def answered(self, qid: str, answers: dict) -> None:
+        """Show the page's answer in the conversation right away."""
+        with self.lock:
+            text = "\n".join(f"{k} → {v}" for k, v in answers.items()) if len(answers) > 1 else next(iter(answers.values()))
+            self._say("you", text, time.time(), via="web")
+
     def perms_payload(self) -> list[dict]:
         with self.lock:
             return [dict(p) for p in self.perms.values() if p["state"] == "open"]
@@ -374,7 +417,7 @@ def bridges(root: Path) -> dict:
 
 def snapshot(root: Path, model: "Model") -> dict:
     return {"state": state_payload(root), **model.agents_payload(), "feed": model.feed_payload(),
-            "bridge": bridges(root), "perms": model.perms_payload()}
+            "bridge": bridges(root), "perms": model.perms_payload(), "questions": model.questions_payload()}
 
 
 # -- server -------------------------------------------------------------------
@@ -450,6 +493,8 @@ def watch(root: Path, model: Model, hub: Hub, stop: threading.Event) -> None:
                     hub.send("chat_status", st)
                 if "agents" in changed:
                     hub.send("agents", model.agents_payload())
+                if "questions" in changed:
+                    hub.send("questions", model.questions_payload())
                 if "perms" in changed:
                     perms = model.perms_payload()
                     hub.send("perms", perms)
@@ -537,13 +582,17 @@ def make_handler(root: Path, port: int, token: str, model: Model, hub: Hub):
 
         def do_POST(self):
             path = urlparse(self.path).path
-            if path not in ("/api/chat", "/api/permission"):
+            if path not in ("/api/chat", "/api/permission", "/api/answer", "/api/presence"):
                 return self._deny(404, "not found")
             body = self._read_json()
             if body is None:
                 return
             if path == "/api/permission":
                 return self._permission(body)
+            if path == "/api/answer":
+                return self._answer(body)
+            if path == "/api/presence":
+                return self._presence(body)
             text = str(body.get("text") or "").strip()
             if not text:
                 return self._deny(400, "empty message")
@@ -558,6 +607,47 @@ def make_handler(root: Path, port: int, token: str, model: Model, hub: Hub):
                 f.write(json.dumps(msg, ensure_ascii=False) + "\n")
             append(root, {"ev": "prompt", "via": "web", "chat_id": chat_id, "text": text})
             self._ok({"chat_id": chat_id})
+
+        def _presence(self, body: dict):
+            """The page says it is open (and whether it is visible); the question hook reads this."""
+            f = ui_dir(root) / "presence.json"
+            try:
+                cur = json.loads(f.read_text())
+            except Exception:
+                cur = {}
+            now = time.time()
+            cur.update(seen=now, **({"visible": now} if body.get("visible") else {}))
+            tmp = f.with_suffix(".tmp")
+            tmp.write_text(json.dumps(cur))
+            os.replace(tmp, f)
+            self._ok({"ok": True})
+
+        def _answer(self, body: dict):
+            qid = str(body.get("qid") or "")
+            q = model.open_question(qid)
+            if not q:
+                return self._deny(410, "This question is no longer waiting here. Check the terminal.")
+            if body.get("terminal"):
+                out = {"terminal": True}
+            else:
+                texts = [x["question"] for x in q["questions"]]
+                raw = body.get("answers")
+                if not isinstance(raw, dict):
+                    return self._deny(400, "answers must be an object")
+                answers = {t: str(raw.get(t) or "").strip()[:MAX_CHAT] for t in texts}
+                if not all(answers.values()):
+                    return self._deny(400, "Answer every question first.")
+                out = {"answers": answers}
+            if not model.claim(qid):
+                return self._deny(410, "This question is no longer waiting here. Check the terminal.")
+            if "answers" in out:
+                model.answered(qid, answers)
+            d = ui_dir(root) / "answers"
+            d.mkdir(exist_ok=True)
+            tmp = d / f"{qid}.tmp"
+            tmp.write_text(json.dumps(out, ensure_ascii=False))
+            os.replace(tmp, d / f"{qid}.json")
+            self._ok({"ok": True})
 
         def _permission(self, body: dict):
             rid, behavior = str(body.get("request_id") or ""), body.get("behavior")
@@ -613,6 +703,7 @@ def serve(root: Path, port: int, token: str) -> None:
     (d / "inbox.jsonl").write_text("")
     (d / "inbox.offset").unlink(missing_ok=True)
     (d / "perm_open").unlink(missing_ok=True)
+    (d / "presence.json").unlink(missing_ok=True)
     model, hub, stop = Model(), Hub(), threading.Event()
     httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(root, port, token, model, hub))
     httpd.daemon_threads = True
