@@ -164,16 +164,20 @@ Phases 2 and 3 run in parallel after gate 1. Shared rules live in the `core` ski
 Opens a local page (127.0.0.1 only, with a random access token in the link) that shows the
 run as a small 3D service center:
 
-- **Front desk** (along the bottom): the conversation, from both sides. Type in the page or in
-  the terminal; both show up here, with Claude's replies and short notes when it hands out work
-  or an agent finishes. Cards for things that need you sit beside it.
+- **Front desk** (along the bottom): the conversation, from both sides. Claude appears here as the
+  **Project Lead**: it plans the work, hands it to the agents, and brings decisions to you. Type in
+  the page or in the terminal; both show up here, with the Project Lead's replies and short notes
+  when it hands out work or an agent finishes. Cards for things that need you sit beside it.
 - **Back office:** each subagent appears as a clay figure when it starts. It walks in, works at
   a desk and says what it is doing, waits on the bench while a heavy build or test run is
   queued, shows a red mark after three failed heavy runs in a row, and leaves when it is done.
-  Each agent type has its own color and prop. The Agents list in the left sidebar shows the
-  same information.
-- **Progress** (left sidebar, under Agents): phases and gates, open decisions, review loops, the machine budget and memory
-  pressure, and the environment recorded in setup.
+  Each agent type has its own color and prop. The Project Lead stands at the front desk with a
+  headset. A speech bubble shows what a figure just said for a few seconds, then shrinks to its
+  name so it doesn't hide the room; click a figure to keep its bubble open.
+- **Left sidebar:** the **Preview** panel when the app can be tried (see *Try the app* below),
+  the **Agents** list (who is working on what), and **Progress**: phases and gates, open
+  decisions, review loops, the machine budget and memory pressure, and the environment recorded
+  in setup.
 
 **Chatting from the page** uses Claude Code
 [channels](https://code.claude.com/docs/en/channels), a research preview. Start Claude Code in
